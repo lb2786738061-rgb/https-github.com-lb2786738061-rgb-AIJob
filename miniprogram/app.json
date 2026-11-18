@@ -1,0 +1,18 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/login/login",
+    "pages/resume/resume",
+    "pages/interview/interview",
+    "pages/report/report",
+    "pages/pricing/pricing",
+    "pages/enterprise/enterprise"
+  ],
+  "window": {
+    "navigationBarTitleText": "职赢AI",
+    "navigationBarBackgroundColor": "#2563eb",
+    "navigationBarTextStyle": "white"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

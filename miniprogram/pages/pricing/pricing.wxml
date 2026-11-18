@@ -1,0 +1,10 @@
+<view class="container">
+  <text class="title">升级会员</text>
+  <view wx:for="{{plans}}" wx:key="id" class="card">
+    <text class="name">{{item.name}}</text>
+    <text class="price">{{item.priceLabel}}</text>
+    <button size="mini" data-id="{{item.id}}" bindtap="buy" loading="{{loading === item.id}}">
+      立即购买
+    </button>
+  </view>
+</view>

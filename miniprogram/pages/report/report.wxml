@@ -1,0 +1,19 @@
+<view class="container">
+  <text class="title">面试复盘报告</text>
+  <view wx:if="{{loading}}" class="hint">加载中...</view>
+  <block wx:elif="{{report}}">
+    <view class="scores">
+      <text>逻辑 {{report.scoreLogic}}</text>
+      <text>专业 {{report.scoreProfessional}}</text>
+      <text>表达 {{report.scoreExpression}}</text>
+      <text>匹配 {{report.scoreMatch}}</text>
+      <text>自信 {{report.scoreConfidence}}</text>
+    </view>
+    <text class="summary">{{report.feedbackSummary}}</text>
+    <view wx:for="{{report.questionReviews}}" wx:key="index" class="review">
+      <text class="q">Q: {{item.question}}</text>
+      <text class="a">A: {{item.answer}}</text>
+      <text class="fb">{{item.evaluation.feedback}}</text>
+    </view>
+  </block>
+</view>

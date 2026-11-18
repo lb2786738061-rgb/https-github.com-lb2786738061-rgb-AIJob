@@ -1,0 +1,248 @@
+================================================================================
+  职赢AI — 启动说明
+  AI 求职与模拟面试官
+================================================================================
+
+一、环境要求
+--------------------------------------------------------------------------------
+
+  - Python 3.11 及以上（后端，推荐 3.13）
+  - Node.js 18 及以上（仅前端，推荐 22）
+  - npm（随 Node.js 安装，仅用于前端）
+  - Docker 方式需安装 Docker Desktop
+
+  架构说明：后端为 Python + FastAPI，前端为 React + Vite。
+           Node.js 仅用于前端开发与构建，后端不使用 npm。
+
+  项目根目录示例：E:\projects\AIJobMockInterview
+
+
+二、方式一：本地开发（推荐）
+--------------------------------------------------------------------------------
+
+  步骤 1：进入项目根目录
+
+    cd E:\projects\AIJobMockInterview
+
+  步骤 2：（推荐）复制环境变量模板
+
+    Windows CMD：
+      copy backend\.env.example backend\.env
+
+    Windows PowerShell：
+      Copy-Item backend\.env.example backend\.env
+
+    说明：模拟面试等可不填 Key；简历诊断/分析必须配置 OPENAI_API_KEY。
+
+  步骤 3：安装 Python 后端依赖
+
+    cd backend
+    python -m pip install -r requirements.txt
+    cd ..
+
+    提示：请使用 python -m pip，避免 Windows 多 Python 环境装错位置。
+
+  步骤 4：安装前端依赖
+
+    cd frontend
+    npm install
+    cd ..
+
+  步骤 5：启动服务（两个终端，推荐）
+
+    终端 1 — Python 后端：
+
+      cd E:\projects\AIJobMockInterview\backend
+      python -m uvicorn app.main:app --reload --port 3002
+
+    终端 2 — 前端：
+
+      cd E:\projects\AIJobMockInterview\frontend
+      npm run dev
+
+    说明：后端首次启动时会自动完成数据库初始化，无需单独执行迁移。
+
+    停止服务：在各自终端按 Ctrl + C
+
+  步骤 6：浏览器访问
+
+    前端页面：      http://localhost:5174
+    后端健康检查：  http://localhost:3002/api/health
+    语音 WebSocket：ws://localhost:3002/api/v1/voice/ws
+
+  （可选）手动数据库迁移 — 仅表结构变更时需要：
+
+    cd backend
+    python -m app.db.migrate
+
+  （可选）一键启动快捷方式 — 在项目根目录执行：
+
+    npm install    # 安装 concurrently 等根目录工具
+    npm run dev    # 内部仍调用上述 Python + Vite 命令
+
+
+三、方式二：Docker 启动
+--------------------------------------------------------------------------------
+
+  步骤 1：进入项目根目录
+
+    cd E:\projects\AIJobMockInterview
+
+  步骤 2：构建并启动容器（首次较慢，需下载镜像与构建）
+
+    docker compose up --build
+
+  步骤 3：浏览器访问
+
+    前端页面：  http://localhost:5174
+    后端 API：  http://localhost:3002
+
+  停止服务：
+
+    在运行终端按 Ctrl + C，或另开终端执行：
+    docker compose down
+
+
+四、启用大模型（简历分析必需）
+--------------------------------------------------------------------------------
+
+  简历诊断、JD 匹配、STAR 重写必须配置大模型 API Key。
+  未配置时仍可登录并使用模拟面试（面试模块有规则降级）。
+
+  步骤 1：若尚未复制环境变量，执行步骤 2 中的 copy / Copy-Item 命令
+
+  步骤 2：编辑 backend\.env，填入大模型配置
+
+    智谱 GLM（推荐，国内可用）：
+      OPENAI_API_KEY=你的智谱密钥
+      OPENAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+      OPENAI_MODEL=glm-4.5-air
+
+    OpenAI 官方：
+      OPENAI_API_KEY=你的密钥
+      OPENAI_BASE_URL=https://api.openai.com/v1
+      OPENAI_MODEL=gpt-4o-mini
+
+    LongCat：
+      OPENAI_API_KEY=你的 LongCat 密钥
+      OPENAI_BASE_URL=https://api.longcat.chat/openai/v1
+      OPENAI_MODEL=LongCat-2.0
+
+    注意：OPENAI_BASE_URL 不要带 /chat/completions，后端会自动拼接。
+         LongCat 不要写成 https://api.longcat.chat/openai（那是 SDK 的 base，本项目会再拼 /chat/completions，必须带 /v1）。
+
+  步骤 3：重启后端服务（终端 1 中 Ctrl + C 后重新运行 uvicorn）
+
+  步骤 4：验证大模型已启用
+    访问 http://localhost:3002/api/health ，确认 llmEnabled 为 true
+    首页不再显示「大模型未配置」即表示配置成功
+
+
+五、登录说明
+--------------------------------------------------------------------------------
+
+  默认使用本地登录（无需额外服务）：
+
+    - 注册：POST /api/v1/auth/register
+    - 登录：POST /api/v1/auth/login
+    - 账号数据保存在 backend\data\careerai.db（SQLite）
+
+  在浏览器中：打开 http://localhost:5174 →「登录」→「注册」即可。
+
+  Platform 服务（可选，默认 http://localhost:3001）：
+
+    - 仅会员套餐、兑换码等高级功能需要
+    - 本地开发注册/登录/简历/面试功能不依赖 Platform
+    - 若接入 Platform，backend\.env 中 PLATFORM_JWT_SECRET 需与 Platform 一致
+
+
+六、首次使用
+--------------------------------------------------------------------------------
+
+  1. 打开 http://localhost:5174
+  2. 点击「登录」→「注册」，创建账号
+  3. 登录后可使用：简历诊断、模拟面试、名企冲刺等功能
+
+
+七、常见问题
+--------------------------------------------------------------------------------
+
+  Q：端口被占用怎么办？
+  A：前端默认 5174，后端默认 3002。请关闭占用端口的程序，或修改：
+     - 前端端口：frontend\vite.config.ts 中 server.port
+     - 后端端口：backend\.env 中 PORT
+
+  Q：python -m app.db.migrate 报错？
+  A：确认已安装 Python 依赖（python -m pip install -r requirements.txt），
+     且在 backend 目录下执行。正常首次启动后端会自动迁移，通常无需手动执行。
+
+  Q：控制台出现 401 Unauthorized？
+  A：常见原因：
+     1. 未登录却访问需鉴权页面 — 请先注册/登录
+     2. localStorage 中有过期 token — 浏览器控制台执行：
+          localStorage.removeItem("careerai_token")
+        然后刷新页面重新登录
+     3. 后端重启后旧 token 失效 — 退出登录后重新登录即可
+
+  Q：页面能打开但接口报错？
+  A：确认终端 1 中 uvicorn 后端已启动。单独访问
+     http://localhost:3002/api/health 检查后端是否在运行。
+
+  Q：pip 出现 Ignoring invalid distribution ~ip 警告？
+  A：不影响运行，可忽略。若想消除警告，删除 Python site-packages 下
+     名为 ~ip 和 ~ip-26.0.dist-info 的残留目录即可。
+
+  Q：python 和 pip 版本不一致？
+  A：统一使用 python -m pip 安装依赖，确保包装入当前 Python 环境。
+
+  Q：Docker 启动后 API 不通？
+  A：检查 docker compose 日志：docker compose logs backend
+     确认 backend 容器正常运行且端口 3002 已映射。
+
+  Q：大模型未生效？
+  A：确认 backend\.env 已配置 OPENAI_API_KEY，并重启后端服务。
+     首页若提示「大模型未配置，简历分析功能不可用」说明 Key 未生效。
+
+  Q：日志出现 ReadTimeout /「网络或安全连接异常」？
+  A：LongCat-2.0 默认会先思考再回答，简历分析已关闭 thinking。
+     请确认 LLM_READ_TIMEOUT>=60、LLM_RESUME_READ_TIMEOUT>=180，并重启后端。
+
+  Q：简历上传后「分析中...」很久？
+  A：简历分析为同步大模型调用（诊断、STAR、JD 匹配、结构化排版并行）。
+     若超时或失败，请检查 OPENAI_BASE_URL 与网络，后端会返回 502 错误。
+
+
+八、常用命令速查
+--------------------------------------------------------------------------------
+
+  python -m pip install -r backend/requirements.txt
+      安装后端依赖
+
+  cd frontend && npm install
+      安装前端依赖
+
+  cd backend && python -m uvicorn app.main:app --reload --port 3002
+      启动 Python 后端
+
+  cd frontend && npm run dev
+      启动前端
+
+  cd backend && python -m app.db.migrate
+      手动数据库迁移（可选）
+
+  npm run dev
+      一键启动前后端（可选快捷方式，需在项目根目录）
+
+  cd frontend && npm run build
+      构建前端生产包
+
+  docker compose up --build
+      Docker 启动
+
+  docker compose down
+      Docker 停止
+
+      会员：vip@careerai.local
+      密码：CareerAI2026!
+
+================================================================================

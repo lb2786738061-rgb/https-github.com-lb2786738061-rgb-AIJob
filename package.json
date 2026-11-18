@@ -1,0 +1,18 @@
+{
+  "name": "ai-job-mock-interview",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI求职与模拟面试官 - CareerAI",
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev -w frontend\"",
+    "dev:backend": "cd backend && python -m uvicorn app.main:app --reload --port 3002",
+    "build": "npm run build -w frontend",
+    "db:migrate": "cd backend && python -m app.db.migrate"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

@@ -1,0 +1,10 @@
+<view class="container">
+  <text class="title">{{isRegister ? '注册账号' : '登录'}}</text>
+  <input class="input" placeholder="邮箱" value="{{email}}" bindinput="onEmail" />
+  <input class="input" password placeholder="密码" value="{{password}}" bindinput="onPassword" />
+  <input wx:if="{{isRegister}}" class="input" placeholder="昵称" value="{{displayName}}" bindinput="onDisplayName" />
+  <button class="btn" bindtap="submit" loading="{{loading}}">
+    {{isRegister ? '注册' : '登录'}}
+  </button>
+  <text class="link" bindtap="toggleMode">{{isRegister ? '已有账号？去登录' : '没有账号？去注册'}}</text>
+</view>

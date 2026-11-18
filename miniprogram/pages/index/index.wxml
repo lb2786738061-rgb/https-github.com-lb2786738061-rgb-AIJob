@@ -1,0 +1,26 @@
+<view class="container">
+  <text class="title">职赢AI</text>
+  <text class="subtitle">AI求职与模拟面试官</text>
+
+  <view wx:if="{{loggedIn}}" class="user-bar">
+    <text>你好，{{userName}}</text>
+    <text class="logout" bindtap="logout">退出</text>
+  </view>
+  <view wx:else class="user-bar">
+    <text>未登录</text>
+    <text class="login" bindtap="goLogin">登录/注册</text>
+  </view>
+
+  <view class="cards">
+    <view
+      wx:for="{{features}}"
+      wx:key="title"
+      class="card"
+      bindtap="go"
+      data-path="{{item.path}}"
+    >
+      <text class="card-title">{{item.title}}</text>
+      <text class="card-desc">{{item.desc}}</text>
+    </view>
+  </view>
+</view>

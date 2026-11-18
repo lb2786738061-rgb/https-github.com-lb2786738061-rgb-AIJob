@@ -1,0 +1,22 @@
+<view class="container">
+  <text class="title">简历工作台</text>
+  <input class="input" placeholder="目标岗位（可选）" bindinput="onTargetJob" />
+  <textarea class="textarea" placeholder="粘贴 JD（可选，用于匹配度分析）" bindinput="onJd" />
+  <button class="btn" bindtap="chooseFile" loading="{{loading}}">上传简历并分析</button>
+
+  <view wx:if="{{result}}" class="result">
+    <text class="result-title">诊断结果</text>
+    <view class="scores">
+      <text>综合 {{result.scoreOverall}}</text>
+      <text>清晰 {{result.scoreClarity}}</text>
+      <text>竞争 {{result.scoreCompetitiveness}}</text>
+      <text>专业 {{result.scoreProfessionalism}}</text>
+    </view>
+    <text wx:if="{{result.scoreGrammar}}" class="match">语法排版：{{result.scoreGrammar}}/100</text>
+    <text wx:if="{{result.matchPercentage}}" class="match">JD 匹配度：{{result.matchPercentage}}%</text>
+    <view wx:if="{{result.grammarIssues.length}}" class="issues">
+      <text wx:for="{{result.grammarIssues}}" wx:key="*this" class="issue">· {{item}}</text>
+    </view>
+    <text class="report">{{result.report}}</text>
+  </view>
+</view>

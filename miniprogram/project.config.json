@@ -1,0 +1,13 @@
+{
+  "description": "职赢AI 微信小程序",
+  "packOptions": { "ignore": [], "include": [] },
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "minified": true
+  },
+  "compileType": "miniprogram",
+  "appid": "touristappid",
+  "projectname": "careerai-miniprogram",
+  "condition": {}
+}

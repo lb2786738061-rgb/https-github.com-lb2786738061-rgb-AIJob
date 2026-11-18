@@ -1,0 +1,26 @@
+<view class="container">
+  <text class="title">模拟面试</text>
+
+  <block wx:if="{{!sessionId}}">
+    <picker mode="selector" range="{{roles}}" range-key="name" bindchange="onRoleChange">
+      <view class="picker">面试官：{{selectedRoleName || '请选择'}}</view>
+    </picker>
+    <picker wx:if="{{industries.length}}" mode="selector" range="{{industries}}" range-key="name" bindchange="onIndustryChange">
+      <view class="picker">行业：{{selectedIndustryName || '不限'}}</view>
+    </picker>
+    <button class="btn" bindtap="start" loading="{{loading}}">开始面试</button>
+  </block>
+
+  <block wx:else>
+    <scroll-view scroll-y class="chat">
+      <view wx:for="{{messages}}" wx:key="index" class="msg {{item.role}}">
+        <text>{{item.content}}</text>
+      </view>
+    </scroll-view>
+    <textarea class="textarea" placeholder="输入回答..." value="{{answer}}" bindinput="onAnswer" />
+    <view class="actions">
+      <button size="mini" bindtap="submit" loading="{{loading}}">发送</button>
+      <button size="mini" type="warn" bindtap="end">结束</button>
+    </view>
+  </block>
+</view>

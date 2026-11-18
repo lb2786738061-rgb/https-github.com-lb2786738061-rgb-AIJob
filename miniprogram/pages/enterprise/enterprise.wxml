@@ -1,0 +1,11 @@
+<view class="container">
+  <text class="title">名企冲刺包</text>
+  <text class="desc">199元/次 · 大厂真题专项训练</text>
+  <view wx:for="{{companies}}" wx:key="id" class="card">
+    <text class="name">{{item.name}}</text>
+    <text class="info">{{item.description}}</text>
+    <button size="mini" data-id="{{item.id}}" bindtap="start" loading="{{loading === item.id}}">
+      开始训练
+    </button>
+  </view>
+</view>
