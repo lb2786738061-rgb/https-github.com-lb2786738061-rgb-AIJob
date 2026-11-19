@@ -47,6 +47,12 @@
       "style": {
         "navigationBarTitleText": "名企冲刺"
       }
+    },
+    {
+      "path": "pages/guest/diagnose",
+      "style": {
+        "navigationBarTitleText": "免登录体检"
+      }
     }
   ],
   "globalStyle": {
