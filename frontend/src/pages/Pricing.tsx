@@ -71,6 +71,21 @@ export default function Pricing() {
     }
   }
 
+  async function handleRefund(orderId: number) {
+    if (!window.confirm("确定要申请退款演示吗？退款后对应会员权益或冲刺点数将被收回。")) {
+      return;
+    }
+    try {
+      await api.refundOrder(orderId, "用户在价格中心发起退款演示");
+      await refreshMe();
+      const updated = await api.getPaymentOrders();
+      setOrders(updated.orders);
+      toast("退款处理成功，权益已调整", "success");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "退款失败", "error");
+    }
+  }
+
   return (
     <div className="page-container-narrow pb-16">
       <div className="text-center mb-12 animate-fade-up">
@@ -114,19 +129,47 @@ export default function Pricing() {
 
       {orders.length > 0 && (
         <div className="glass-card p-6 mb-10 animate-fade-up">
-          <h2 className="font-display font-bold text-lg mb-4">我的订单</h2>
-          <div className="space-y-2 text-sm">
-            {orders.slice(0, 5).map((order) => (
+          <h2 className="font-display font-bold text-lg mb-4">我的订单与退款演示</h2>
+          <div className="space-y-3 text-sm">
+            {orders.slice(0, 8).map((order) => (
               <div
                 key={order.id}
-                className="flex justify-between items-center py-2 border-b border-border last:border-0"
+                className="flex flex-col sm:flex-row justify-between sm:items-center py-2.5 border-b border-surface-border last:border-0 gap-2"
               >
-                <span>
-                  {order.planType} · ¥{(order.amountCents / 100).toFixed(0)}
-                </span>
-                <span className={order.status === "paid" ? "text-brand-600" : "text-ink-muted"}>
-                  {order.status === "paid" ? "已支付" : "待支付"}
-                </span>
+                <div>
+                  <span className="font-medium text-ink">
+                    {order.planType} · ¥{(order.amountCents / 100).toFixed(0)}
+                  </span>
+                  <span className="text-xs text-ink-muted ml-3">
+                    订单号 #{order.id}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={
+                      order.status === "paid"
+                        ? "text-brand-600 font-medium"
+                        : order.status === "refunded"
+                        ? "text-rose-600 font-medium"
+                        : "text-ink-muted"
+                    }
+                  >
+                    {order.status === "paid"
+                      ? "已支付"
+                      : order.status === "refunded"
+                      ? "已退款"
+                      : "待支付"}
+                  </span>
+                  {order.status === "paid" && (
+                    <button
+                      type="button"
+                      onClick={() => handleRefund(order.id)}
+                      className="text-xs px-2.5 py-1 rounded border border-rose-200 text-rose-600 hover:bg-rose-50 transition-colors"
+                    >
+                      申请退款(演示)
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

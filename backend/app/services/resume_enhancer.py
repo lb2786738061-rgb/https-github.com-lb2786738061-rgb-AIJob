@@ -31,13 +31,16 @@ def rule_based_enhance(
 ) -> EnhanceResult:
     """当大模型不可用时的基于规则的简历增强兜底逻辑"""
     sections = parsed.get("sections", {})
+    summary_val = str(sections.get("advantage") or sections.get("summary") or "")
     new_sections = {
         "contact": sections.get("contact", ""),
-        "summary": sections.get("summary", ""),
+        "summary": summary_val,
+        "advantage": summary_val,
         "experience": list(sections.get("experience", [])),
-        "skills": list(sections.get("skills", [])),
+        "skills": list(sections.get("skills") or sections.get("skill") or []),
         "education": list(sections.get("education", [])),
-        "projects": list(sections.get("projects", [])),
+        "projects": list(sections.get("projects") or sections.get("project") or []),
+        "awards": list(sections.get("awards") or sections.get("award") or []),
     }
     improvements: list[str] = []
 
@@ -48,6 +51,7 @@ def rule_based_enhance(
             f"具备扎实的专业技能与丰富的实战项目落地经验，专注于{role}领域。"
             "拥有良好的系统性思维与解决复杂业务问题的能力，注重团队协作与业务价值交付。"
         )
+        new_sections["advantage"] = new_sections["summary"]
         improvements.append("根据求职目标自动补齐了专业精炼的个人核心优势简介")
 
     # 2. 增强工作经历动词与量化指标
@@ -93,13 +97,22 @@ def _merge_enhanced_sections(
     llm_sections: dict[str, Any],
 ) -> tuple[dict[str, Any], list[str]]:
     original_sections = parsed.get("sections", {})
+    summary_val = str(
+        llm_sections.get("advantage")
+        or llm_sections.get("summary")
+        or original_sections.get("advantage")
+        or original_sections.get("summary")
+        or ""
+    )
     candidate = {
         "contact": str(llm_sections.get("contact") or original_sections.get("contact") or ""),
-        "summary": str(llm_sections.get("summary") or original_sections.get("summary") or ""),
+        "summary": summary_val,
+        "advantage": summary_val,
         "experience": list(llm_sections.get("experience") or []),
-        "skills": list(llm_sections.get("skills") or []),
+        "skills": list(llm_sections.get("skills") or llm_sections.get("skill") or []),
         "education": list(llm_sections.get("education") or []),
-        "projects": list(llm_sections.get("projects") or []),
+        "projects": list(llm_sections.get("projects") or llm_sections.get("project") or []),
+        "awards": list(llm_sections.get("awards") or llm_sections.get("award") or []),
     }
     return preserve_section_lists(original_sections, candidate)
 

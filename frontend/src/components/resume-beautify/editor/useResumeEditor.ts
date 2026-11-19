@@ -21,21 +21,45 @@ export type BeautifyMeta = {
 const EMPTY_SECTIONS: ParsedResume["sections"] = {
   contact: "",
   summary: "",
+  advantage: "",
   education: [],
   experience: [],
   skills: [],
+  skill: [],
   projects: [],
+  project: [],
+  awards: [],
+  award: [],
 };
 
 function normalizeSections(sections?: ParsedResume["sections"] | null): ParsedResume["sections"] {
   const source = sections ?? EMPTY_SECTIONS;
+  const summaryVal =
+    typeof source.advantage === "string" && source.advantage.trim()
+      ? source.advantage
+      : typeof source.summary === "string"
+        ? source.summary
+        : "";
+  const educationVal = Array.isArray(source.education) ? source.education.map(String).filter(Boolean) : [];
+  const experienceVal = Array.isArray(source.experience) ? source.experience.map(String).filter(Boolean) : [];
+  const rawSkills = Array.isArray(source.skills) ? source.skills : Array.isArray(source.skill) ? source.skill : [];
+  const skillsVal = rawSkills.map(String).filter(Boolean);
+  const rawProjects = Array.isArray(source.projects) ? source.projects : Array.isArray(source.project) ? source.project : [];
+  const projectsVal = rawProjects.map(String).filter(Boolean);
+  const rawAwards = Array.isArray(source.awards) ? source.awards : Array.isArray(source.award) ? source.award : [];
+  const awardsVal = rawAwards.map(String).filter(Boolean);
   return {
     contact: typeof source.contact === "string" ? source.contact : "",
-    summary: typeof source.summary === "string" ? source.summary : "",
-    education: Array.isArray(source.education) ? source.education.map(String).filter(Boolean) : [],
-    experience: Array.isArray(source.experience) ? source.experience.map(String).filter(Boolean) : [],
-    skills: Array.isArray(source.skills) ? source.skills.map(String).filter(Boolean) : [],
-    projects: Array.isArray(source.projects) ? source.projects.map(String).filter(Boolean) : [],
+    summary: summaryVal,
+    advantage: summaryVal,
+    education: educationVal,
+    experience: experienceVal,
+    skills: skillsVal,
+    skill: skillsVal,
+    projects: projectsVal,
+    project: projectsVal,
+    awards: awardsVal,
+    award: awardsVal,
   };
 }
 
@@ -93,7 +117,7 @@ export function useResumeEditor(initialParsed: ParsedResume) {
   };
 
   const updateListItem = (
-    key: "experience" | "skills" | "education" | "projects",
+    key: "experience" | "skills" | "education" | "projects" | "awards",
     index: number,
     value: string,
   ) => {
@@ -103,12 +127,12 @@ export function useResumeEditor(initialParsed: ParsedResume) {
       items[index] = value;
       return {
         ...current,
-        sections: { ...current.sections, [key]: items },
+        sections: normalizeSections({ ...current.sections, [key]: items }),
       };
     });
   };
 
-  const addListItem = (key: "experience" | "skills" | "education" | "projects") => {
+  const addListItem = (key: "experience" | "skills" | "education" | "projects" | "awards") => {
     setDraft((current) => {
       const items = current.sections[key] ?? [];
       return {
@@ -119,23 +143,23 @@ export function useResumeEditor(initialParsed: ParsedResume) {
   };
 
   const removeListItem = (
-    key: "experience" | "skills" | "education" | "projects",
+    key: "experience" | "skills" | "education" | "projects" | "awards",
     index: number,
   ) => {
     setDraft((current) => {
       const items = current.sections[key] ?? [];
       return {
         ...current,
-        sections: {
+        sections: normalizeSections({
           ...current.sections,
           [key]: items.filter((_, itemIndex) => itemIndex !== index),
-        },
+        }),
       };
     });
   };
 
   const moveListItem = (
-    key: "experience" | "skills" | "education" | "projects",
+    key: "experience" | "skills" | "education" | "projects" | "awards",
     index: number,
     direction: -1 | 1,
   ) => {
@@ -148,7 +172,7 @@ export function useResumeEditor(initialParsed: ParsedResume) {
       nextItems.splice(nextIndex, 0, item);
       return {
         ...current,
-        sections: { ...current.sections, [key]: nextItems },
+        sections: normalizeSections({ ...current.sections, [key]: nextItems }),
       };
     });
   };

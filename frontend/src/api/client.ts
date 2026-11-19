@@ -52,10 +52,96 @@ export const api = {
 
   getMe: () =>
     request<{
-      user: { id: number; displayName: string; planTier: string; email: string };
+      user: {
+        id: number;
+        displayName: string;
+        planTier: string;
+        email: string;
+        phone?: string;
+        targetJobTitle?: string;
+        privacySettings?: Record<string, any>;
+        isDeleted?: boolean;
+      };
       quota: QuotaStatus;
       llmEnabled: boolean;
     }>("/user/me"),
+
+  sendSmsCode: (phone: string) =>
+    request<{ success: boolean; message: string; devCode?: string }>("/auth/send-sms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone }),
+    }),
+
+  loginBySms: (phone: string, code: string) =>
+    request<{ token: string; user: { id: number; email: string; phone?: string; displayName: string } }>(
+      "/auth/login-sms",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, code }),
+      }
+    ),
+
+  updateProfile: (data: { displayName?: string; targetJobTitle?: string; privacySettings?: any }) =>
+    request<{ success: boolean; user: any }>("/user/profile", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+
+  deleteAccount: () =>
+    request<{ success: boolean; message: string }>("/user/delete-account", {
+      method: "POST",
+    }),
+
+  getGuestStatus: (deviceId: string) =>
+    request<{ deviceId: string; hasUsed: boolean; remaining: number }>(
+      `/resumes/guest-status?deviceId=${encodeURIComponent(deviceId)}`
+    ),
+
+  guestDiagnose: (data: { deviceId: string; resumeText: string; targetJobTitle?: string }) =>
+    request<{
+      scoreOverall: number;
+      targetJobTitle: string;
+      highlights: string[];
+      suggestions: string[];
+      dimensionScores: { clarity: number; competitiveness: number; match: number; professionalism: number };
+      guestLimit: { total: number; used: number; remaining: number };
+      message: string;
+    }>("/resumes/guest-diagnose", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+
+  refundOrder: (orderId: number, reason?: string) =>
+    request<{ order: any; message: string }>(`/payments/orders/${orderId}/refund`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    }),
+
+  getInterviewTrend: () =>
+    request<{
+      trends: {
+        id: number;
+        interviewerRole: string;
+        targetJobTitle?: string;
+        scoreOverall: number;
+        scoreLogic?: number;
+        scoreProfessional?: number;
+        scoreExpression?: number;
+        scoreMatch?: number;
+        scoreConfidence?: number;
+        startedAt: string;
+        endedAt?: string;
+        totalDurationSec?: number;
+      }[];
+      totalCompleted: number;
+      averageScore: number;
+      improvement: number;
+    }>("/interviews/stats/trend"),
 
   getEnterpriseCompanies: () => request<EnterpriseCompany[]>("/interviews/enterprise/companies"),
 
@@ -116,12 +202,37 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     }),
-  patchResume: (id: number, data: { parsedJson?: object; resumeTitle?: string }) =>
+  patchResume: (
+    id: number,
+    data: {
+      parsedJson?: object;
+      resumeTitle?: string;
+      targetJobTitle?: string;
+      jobDescription?: string;
+      versionLabel?: string;
+    }
+  ) =>
     request<Resume>(`/resumes/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     }),
+  getResumeVersions: (id: number) =>
+    request<{ versions: ResumeVersion[] }>(`/resumes/${id}/versions`),
+  rollbackResumeVersion: (id: number, versionId: number) =>
+    request<Resume>(`/resumes/${id}/versions/${versionId}/rollback`, {
+      method: "POST",
+    }),
+  exportResumeContent: async (id: number, format: "markdown" | "json" | "html"): Promise<string> => {
+    const headers: Record<string, string> = {};
+    if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+    const res = await fetch(`${API_BASE}/resumes/${id}/export?format=${format}`, { headers });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error ?? "导出失败");
+    }
+    return res.text();
+  },
   deleteResume: (id: number) =>
     request<{ ok: boolean }>(`/resumes/${id}`, { method: "DELETE" }),
   starRewrite: (
@@ -201,6 +312,56 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
+    }),
+  swapQuestion: (sessionId: number, excludedQuestions?: string[]) =>
+    request<{
+      question: string;
+      messageId: number;
+      questionCount: number;
+      stage?: InterviewStage;
+    }>(`/interviews/sessions/${sessionId}/swap-question`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ excludedQuestions: excludedQuestions ?? [] }),
+    }),
+  getWeakQuestions: (status = "all", role = "") => {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    if (role) params.set("role", role);
+    return request<{ items: WeakQuestionItem[]; stats: WeakQuestionStats }>(
+      `/interviews/weak-questions?${params.toString()}`
+    );
+  },
+  updateWeakQuestion: (
+    id: number,
+    data: { nextExamEnabled?: boolean; status?: "weak" | "mastered" }
+  ) =>
+    request<{ item: WeakQuestionItem }>(`/interviews/weak-questions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+  setPreferenceByQuestion: (question: string, nextExamEnabled: boolean) =>
+    request<{ item: WeakQuestionItem }>(
+      "/interviews/weak-questions/by-question/preference",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, nextExamEnabled }),
+      }
+    ),
+  practiceWeakQuestion: (id: number, answer: string) =>
+    request<WeakQuestionPracticeResult>(
+      `/interviews/weak-questions/${id}/practice`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answer }),
+      }
+    ),
+  deleteWeakQuestion: (id: number) =>
+    request<{ ok: boolean }>(`/interviews/weak-questions/${id}`, {
+      method: "DELETE",
     }),
   endSession: (sessionId: number, durationSec: number) =>
     request<{ session: InterviewSession; report: SessionReport }>(
@@ -296,10 +457,12 @@ export interface StructuredResumeLayout {
   name: string;
   contact: { text: string }[];
   summary?: string;
+  advantage?: string;
   experience: StructuredResumeEntry[];
   projects: StructuredResumeEntry[];
   education: StructuredResumeEntry[];
   skills: { groups: { label?: string; items: string[] }[] };
+  awards?: string[];
 }
 
 export interface ParsedResume {
@@ -307,12 +470,24 @@ export interface ParsedResume {
   sections: {
     contact?: string;
     summary?: string;
+    advantage?: string;
     education: string[];
     experience: string[];
     skills: string[];
+    skill?: string[];
     projects: string[];
+    project?: string[];
+    awards?: string[];
+    award?: string[];
   };
   layout?: StructuredResumeLayout;
+}
+
+export interface ResumeVersion {
+  id: number;
+  resumeId: number;
+  versionLabel: string;
+  createdAt: string;
 }
 
 export interface GrammarCheck {
@@ -408,12 +583,15 @@ export interface InterviewMessage {
 }
 
 export interface StartSessionPayload {
-  resumeId?: number;
+  resumeId: number;
   interviewerRole: string;
   industry?: string;
   mode?: "text" | "voice";
   difficulty?: string;
   targetJobTitle?: string;
+  experienceYears?: string;
+  jobDescription?: string;
+  durationMinutes?: number;
 }
 
 export interface StartSessionResult {
@@ -424,12 +602,23 @@ export interface StartSessionResult {
   stage?: InterviewStage;
   difficulty?: string;
   targetJobTitle?: string;
+  experienceYears?: string;
+  durationMinutes?: number;
   techAgenda?: TechAgendaItem[];
   currentTech?: TechAgendaItem | null;
 }
 
+export interface WeakQuestionRecordMeta {
+  weakQuestionId: number | null;
+  overallScore: number;
+  status: "weak" | "mastered";
+  nextExamEnabled: boolean;
+  deductionNotes?: string;
+}
+
 export interface AnswerResult {
   evaluation: QuestionEvaluation;
+  weakQuestionRecord?: WeakQuestionRecordMeta | null;
   nextQuestion: string | null;
   questionCount: number;
   isComplete: boolean;
@@ -439,6 +628,47 @@ export interface AnswerResult {
   skipped?: boolean;
   techAgenda?: TechAgendaItem[];
   currentTech?: TechAgendaItem | null;
+}
+
+export interface WeakQuestionItem {
+  id: number;
+  userId: number;
+  sessionId: number | null;
+  resumeId: number | null;
+  question: string;
+  lastAnswer: string | null;
+  modelAnswer: string | null;
+  interviewerRole: string | null;
+  targetJobTitle: string | null;
+  scoreOverall: number;
+  scoreLogic: number;
+  scoreProfessional: number;
+  scoreMatch: number;
+  scoreExpression: number;
+  deductionNotes: string | null;
+  status: "weak" | "mastered";
+  nextExamEnabled: boolean;
+  practiceCount: number;
+  createdAt: string;
+  updatedAt: string;
+  evaluation?: QuestionEvaluation | null;
+}
+
+export interface WeakQuestionStats {
+  totalCount: number;
+  weakCount: number;
+  masteredCount: number;
+  nextExamCount: number;
+  totalPracticeCount: number;
+}
+
+export interface WeakQuestionPracticeResult {
+  item: WeakQuestionItem;
+  evaluation: QuestionEvaluation;
+  previousScore: number;
+  newScore: number;
+  scoreDelta: number;
+  masteredNow: boolean;
 }
 
 export interface StarCoverage {
@@ -502,6 +732,7 @@ export interface SessionReport {
     question: string;
     answer: string;
     evaluation: QuestionEvaluation;
+    weakMeta?: WeakQuestionRecordMeta;
   }[];
   transcript?: {
     fullTranscript: string;

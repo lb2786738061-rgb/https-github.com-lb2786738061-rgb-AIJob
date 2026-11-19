@@ -3,6 +3,9 @@ import Home from "./pages/Home";
 import ResumeWorkbench from "./pages/ResumeWorkbench";
 import MockInterview from "./pages/MockInterview";
 import InterviewReport from "./pages/InterviewReport";
+import WeakQuestionDrill from "./pages/WeakQuestionDrill";
+import GuestDiagnose from "./pages/GuestDiagnose";
+import Profile from "./pages/Profile";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Pricing from "./pages/Pricing";
@@ -38,6 +41,7 @@ function AppHeader() {
             {[
               { to: "/resume", label: "简历" },
               { to: "/interview", label: "面试" },
+              { to: "/practice", label: "弱题复盘" },
               { to: "/enterprise", label: "名企" },
             ].map(({ to, label }) => (
               <NavLink
@@ -54,17 +58,29 @@ function AppHeader() {
 
           {user ? (
             <div className="flex items-center gap-2 pl-2 border-l border-border">
-              <span className="hidden sm:inline text-xs text-ink-muted font-medium">
+              <NavLink
+                to="/profile"
+                className={({ isActive }) =>
+                  `text-xs font-semibold px-2 py-1 rounded transition-colors ${
+                    isActive ? "text-brand-600 bg-brand-50" : "text-ink hover:text-brand-600"
+                  }`
+                }
+              >
                 {user.displayName}
-              </span>
+              </NavLink>
               <button onClick={logout} className="btn-ghost">
                 退出
               </button>
             </div>
           ) : (
-            <NavLink to="/login" className="btn-primary text-sm !py-2 !px-4">
-              登录
-            </NavLink>
+            <div className="flex items-center gap-2">
+              <NavLink to="/guest" className="text-xs text-brand-600 hover:underline px-2 py-1">
+                免登录体检
+              </NavLink>
+              <NavLink to="/login" className="btn-primary text-sm !py-2 !px-4">
+                登录
+              </NavLink>
+            </div>
           )}
         </div>
       </div>
@@ -79,12 +95,15 @@ function AppContent() {
       <main className="flex-1">
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/guest" element={<GuestDiagnose />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
           <Route path="/pricing" element={<ProtectedRoute><Pricing /></ProtectedRoute>} />
           <Route path="/resume" element={<ProtectedRoute><ResumeWorkbench /></ProtectedRoute>} />
           <Route path="/interview" element={<ProtectedRoute><MockInterview /></ProtectedRoute>} />
           <Route path="/interview/:sessionId/report" element={<ProtectedRoute><InterviewReport /></ProtectedRoute>} />
+          <Route path="/practice" element={<ProtectedRoute><WeakQuestionDrill /></ProtectedRoute>} />
           <Route path="/enterprise" element={<ProtectedRoute><Enterprise /></ProtectedRoute>} />
         </Routes>
       </main>

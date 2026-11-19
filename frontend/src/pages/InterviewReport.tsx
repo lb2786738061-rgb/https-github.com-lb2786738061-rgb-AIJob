@@ -65,6 +65,19 @@ export default function InterviewReport() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [companies, setCompanies] = useState<EnterpriseCompany[]>([]);
+  const [trendsData, setTrendsData] = useState<{
+    trends: any[];
+    averageScore: number;
+    improvement: number;
+  } | null>(null);
+
+  useEffect(() => {
+    api.getInterviewTrend().then((data) => {
+      if (data && data.trends?.length) {
+        setTrendsData(data);
+      }
+    }).catch(() => {});
+  }, []);
 
   const retakeRole = searchParams.get("role") ?? role;
   const retakeResume = searchParams.get("resumeId") ?? (resumeId ? String(resumeId) : "");
@@ -151,7 +164,10 @@ export default function InterviewReport() {
             {targetJob ? ` · 岗位：${targetJob}` : ""}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Link to="/practice" className="btn-secondary !text-sm !border-cyan-300 !text-cyan-800">
+            去弱题复盘本
+          </Link>
           <Link to={retakeUrl} className="btn-secondary !text-sm">
             针对弱项再练
           </Link>
@@ -277,57 +293,152 @@ export default function InterviewReport() {
         逐题复盘
       </h2>
       <div className="space-y-4">
-        {report.questionReviews.map((q, i) => (
-          <div key={i} className="glass-card p-6 animate-fade-up">
-            <div className="flex items-start justify-between gap-3 mb-3">
-              <div>
-                <p className="text-xs text-cyan-700 mb-1 font-bold tracking-wide">第 {i + 1} 题</p>
-                <p className="font-display font-bold text-lg text-ink leading-snug">{q.question}</p>
-              </div>
-            </div>
-            <div className="mb-4">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">你的回答</p>
-              <p className="text-sm text-ink-muted bg-slate-50 border border-slate-200/70 p-4 rounded-xl leading-relaxed whitespace-pre-wrap">
-                {q.answer}
-              </p>
-            </div>
-            {q.evaluation.starCoverage && (
-              <div className="flex flex-wrap gap-1.5 mb-3">
-                {Object.entries(STAR_NAMES).map(([key, name]) => {
-                  const hit = Boolean(q.evaluation.starCoverage?.[key as keyof typeof q.evaluation.starCoverage]);
-                  return (
-                    <span key={key} className={`star-chip ${hit ? "star-chip-on" : ""}`}>
-                      {hit ? "✓" : "○"} {name}
+        {report.questionReviews.map((q, i) => {
+          const calcScore = Math.round(
+            q.evaluation.scoreLogic * 0.25 +
+              q.evaluation.scoreProfessional * 0.3 +
+              q.evaluation.scoreMatch * 0.25 +
+              q.evaluation.scoreExpression * 0.2
+          );
+          const qScore = q.weakMeta?.overallScore ?? calcScore;
+          const isWeak = (q.weakMeta?.status ?? (qScore < 70 ? "weak" : "mastered")) === "weak";
+          const nextExamChecked = q.weakMeta?.nextExamEnabled ?? isWeak;
+
+          return (
+            <div key={i} className="glass-card p-6 animate-fade-up">
+              <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <p className="text-xs text-cyan-700 font-bold tracking-wide">第 {i + 1} 题</p>
+                    <span className={`tag ${isWeak ? "tag-danger" : "tag-success"}`}>
+                      {isWeak ? `弱题 (${qScore}分 · 默认下次复考)` : `已掌握 (${qScore}分)`}
                     </span>
-                  );
-                })}
+                  </div>
+                  <p className="font-display font-bold text-lg text-ink leading-snug">{q.question}</p>
+                </div>
+                <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-cyan-800 bg-cyan-50/70 border border-cyan-200 px-3 py-1.5 rounded-xl cursor-pointer select-none shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={nextExamChecked}
+                    onChange={async (e) => {
+                      const checked = e.target.checked;
+                      const nextReviews = [...report.questionReviews];
+                      nextReviews[i] = {
+                        ...q,
+                        weakMeta: {
+                          weakQuestionId: q.weakMeta?.weakQuestionId ?? null,
+                          overallScore: qScore,
+                          status: isWeak ? "weak" : "mastered",
+                          nextExamEnabled: checked,
+                        },
+                      };
+                      setReport({ ...report, questionReviews: nextReviews });
+                      try {
+                        await api.setPreferenceByQuestion(q.question, checked);
+                        toast(
+                          checked
+                            ? isWeak
+                              ? "已开启下次面试优先复考此弱题"
+                              : "已勾选「下次再出」，下次面试将以不同问法再现"
+                            : "已关闭该题的下次复考偏好",
+                          "success"
+                        );
+                      } catch (err) {
+                        toast(err instanceof Error ? err.message : "设置失败", "error");
+                      }
+                    }}
+                    className="rounded border-slate-300 text-cyan-700 focus:ring-cyan-500"
+                  />
+                  <span>{isWeak ? "下次再考" : "下次再出（换问法）"}</span>
+                </label>
               </div>
-            )}
-            <div className="flex flex-wrap gap-2 text-xs mb-3">
-              {[
-                ["逻辑", q.evaluation.scoreLogic],
-                ["专业", q.evaluation.scoreProfessional],
-                ["表达", q.evaluation.scoreExpression],
-                ["自信", q.evaluation.scoreConfidence],
-              ].map(([label, score]) => (
-                <span key={label as string} className="tag tag-success">
-                  {label} {score}
-                </span>
-              ))}
+              <div className="mb-4">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">你的回答</p>
+                <p className="text-sm text-ink-muted bg-slate-50 border border-slate-200/70 p-4 rounded-xl leading-relaxed whitespace-pre-wrap">
+                  {q.answer}
+                </p>
+              </div>
+              {q.evaluation.starCoverage && (
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {Object.entries(STAR_NAMES).map(([key, name]) => {
+                    const hit = Boolean(q.evaluation.starCoverage?.[key as keyof typeof q.evaluation.starCoverage]);
+                    return (
+                      <span key={key} className={`star-chip ${hit ? "star-chip-on" : ""}`}>
+                        {hit ? "✓" : "○"} {name}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-2 text-xs mb-3">
+                {[
+                  ["逻辑", q.evaluation.scoreLogic],
+                  ["专业", q.evaluation.scoreProfessional],
+                  ["匹配", q.evaluation.scoreMatch],
+                  ["表达", q.evaluation.scoreExpression],
+                ].map(([label, score]) => (
+                  <span key={label as string} className="tag tag-success">
+                    {label} {score}
+                  </span>
+                ))}
+              </div>
+              <p className="text-sm text-cyan-800 mb-3 font-semibold leading-relaxed">{q.evaluation.feedback}</p>
+              {!!q.evaluation.missedPoints?.length && (
+                <p className="text-xs text-rose-700 mb-3 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">
+                  <span className="font-bold">扣分说明：</span>{q.evaluation.missedPoints.join(" · ")}
+                </p>
+              )}
+              <div className="text-sm border-t border-border pt-4 mt-2 bg-cyan-50/30 -mx-2 px-4 pb-1 rounded-b-lg">
+                <span className="font-bold text-cyan-900">示范回答：</span>
+                <span className="text-ink-muted leading-relaxed">{q.evaluation.modelAnswer}</span>
+              </div>
             </div>
-            <p className="text-sm text-cyan-800 mb-3 font-semibold leading-relaxed">{q.evaluation.feedback}</p>
-            {!!q.evaluation.missedPoints?.length && (
-              <p className="text-xs text-rose-700 mb-3 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">
-                <span className="font-bold">可补强点：</span>{q.evaluation.missedPoints.join(" · ")}
-              </p>
-            )}
-            <div className="text-sm border-t border-border pt-4 mt-2 bg-cyan-50/30 -mx-2 px-4 pb-1 rounded-b-lg">
-              <span className="font-bold text-cyan-900">参考示范：</span>
-              <span className="text-ink-muted leading-relaxed">{q.evaluation.modelAnswer}</span>
+          );
+        })}
+      </div>
+
+      {trendsData && trendsData.trends.length > 1 && (
+        <div className="glass-card p-6 mt-10 rounded-2xl animate-fade-up">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
+            <div>
+              <span className="badge badge-brand mb-1">能力进化轨迹</span>
+              <h3 className="font-display font-bold text-xl text-ink">历次面试综合能力成长趋势</h3>
+            </div>
+            <div className="flex gap-4 text-sm">
+              <div className="bg-surface-ground px-3 py-1.5 rounded-lg">
+                <span className="text-ink-muted text-xs block">历史均分</span>
+                <span className="font-bold text-brand-600 text-base">{trendsData.averageScore}</span>
+              </div>
+              <div className="bg-surface-ground px-3 py-1.5 rounded-lg">
+                <span className="text-ink-muted text-xs block">最近进步幅度</span>
+                <span className={`font-bold text-base ${trendsData.improvement >= 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                  {trendsData.improvement >= 0 ? `+${trendsData.improvement}` : trendsData.improvement} 分
+                </span>
+              </div>
             </div>
           </div>
-        ))}
-      </div>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+              {trendsData.trends.slice(-6).map((t, idx) => (
+                <div key={t.id || idx} className="p-3 bg-surface-ground rounded-xl text-center flex flex-col justify-between">
+                  <span className="text-xs text-ink-muted">第 {idx + 1} 场</span>
+                  <div className="my-2">
+                    <span className="text-2xl font-bold font-display text-brand-700">{t.scoreOverall}</span>
+                    <span className="text-xs text-ink-muted block mt-0.5">{ROLE_NAMES[t.interviewerRole] || t.interviewerRole}</span>
+                  </div>
+                  <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-brand-600 h-full rounded-full transition-all"
+                      style={{ width: `${Math.min(100, t.scoreOverall)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,11 +1,15 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { api, setAuthToken, type QuotaStatus } from "../api/client";
 
-interface User {
+export interface User {
   id: number;
   email: string;
   displayName: string;
   planTier: string;
+  phone?: string;
+  targetJobTitle?: string;
+  privacySettings?: Record<string, any>;
+  isDeleted?: boolean;
 }
 
 interface AuthContextValue {
@@ -13,6 +17,7 @@ interface AuthContextValue {
   quota: QuotaStatus | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginBySms: (phone: string, code: string) => Promise<void>;
   register: (email: string, password: string, displayName: string) => Promise<void>;
   logout: () => void;
   refreshMe: () => Promise<void>;
@@ -50,6 +55,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function login(email: string, password: string) {
     const data = await api.login(email.trim(), password);
+    setAuthToken(data.token);
+    localStorage.setItem("careerai_token", data.token);
+    await refreshMe();
+  }
+
+  async function loginBySms(phone: string, code: string) {
+    const data = await api.loginBySms(phone.trim(), code.trim());
     setAuthToken(data.token);
     localStorage.setItem("careerai_token", data.token);
     await refreshMe();

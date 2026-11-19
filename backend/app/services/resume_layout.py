@@ -316,7 +316,7 @@ def layout_from_sections(sections: dict[str, Any], resume_title: str = "") -> di
     )
     projects = [
         entry
-        for item in clean_list_items(list(sections.get("projects") or []))
+        for item in clean_list_items(list(sections.get("projects") or sections.get("project") or []))
         if (entry := parse_entry_from_item(item, "projects"))
     ]
     education = [
@@ -324,14 +324,18 @@ def layout_from_sections(sections: dict[str, Any], resume_title: str = "") -> di
         for item in clean_list_items(list(sections.get("education") or []))
         if (entry := parse_entry_from_item(item, "education"))
     ]
+    awards = clean_list_items(list(sections.get("awards") or sections.get("award") or []))
+    summary_val = str(sections.get("advantage") or sections.get("summary") or "").strip()
     return {
         "name": name,
         "contact": contact,
-        "summary": str(sections.get("summary") or "").strip(),
+        "summary": summary_val,
+        "advantage": summary_val,
         "experience": experience,
         "projects": projects,
         "education": education,
-        "skills": parse_skills_layout(list(sections.get("skills") or [])),
+        "skills": parse_skills_layout(list(sections.get("skills") or sections.get("skill") or [])),
+        "awards": awards,
     }
 
 
@@ -368,13 +372,24 @@ def flatten_layout_to_sections(layout: dict[str, Any]) -> dict[str, Any]:
         for piece in (layout.get("contact") or [])
         if isinstance(piece, dict) and str(piece.get("text") or "").strip()
     )
+    summary_val = str(layout.get("advantage") or layout.get("summary") or "").strip()
+    exp_list = [flatten_entry(entry) for entry in (layout.get("experience") or []) if flatten_entry(entry)]
+    proj_list = [flatten_entry(entry) for entry in (layout.get("projects") or []) if flatten_entry(entry)]
+    edu_list = [flatten_entry(entry) for entry in (layout.get("education") or []) if flatten_entry(entry)]
+    skill_list = flatten_skills(layout.get("skills") or {})
+    award_list = clean_list_items(list(layout.get("awards") or layout.get("award") or []))
     return {
         "contact": "\n".join(line for line in contact_lines if line),
-        "summary": str(layout.get("summary") or "").strip(),
-        "experience": [flatten_entry(entry) for entry in (layout.get("experience") or []) if flatten_entry(entry)],
-        "projects": [flatten_entry(entry) for entry in (layout.get("projects") or []) if flatten_entry(entry)],
-        "education": [flatten_entry(entry) for entry in (layout.get("education") or []) if flatten_entry(entry)],
-        "skills": flatten_skills(layout.get("skills") or {}),
+        "summary": summary_val,
+        "advantage": summary_val,
+        "experience": exp_list,
+        "projects": proj_list,
+        "project": proj_list,
+        "education": edu_list,
+        "skills": skill_list,
+        "skill": skill_list,
+        "awards": award_list,
+        "award": award_list,
     }
 
 
@@ -426,7 +441,13 @@ def normalize_layout(raw: Any, fallback_sections: dict[str, Any], resume_title: 
     if not contact:
         contact = list(fallback.get("contact") or [])
 
-    summary = str(raw.get("summary") if raw.get("summary") is not None else fallback.get("summary") or "").strip()
+    summary = str(
+        raw.get("advantage")
+        or raw.get("summary")
+        or fallback.get("advantage")
+        or fallback.get("summary")
+        or ""
+    ).strip()
 
     def entries_for(key: str) -> list[dict[str, Any]]:
         parsed = [entry for item in (raw.get(key) or []) if (entry := normalize_entry(item))]
@@ -450,14 +471,21 @@ def normalize_layout(raw: Any, fallback_sections: dict[str, Any], resume_title: 
     elif isinstance(skills_raw, list) and skills_raw:
         skills = parse_skills_layout([str(item) for item in skills_raw])
 
+    awards_raw = raw.get("awards") or raw.get("award")
+    awards = _clean_string_list(awards_raw) if isinstance(awards_raw, list) else list(fallback.get("awards") or [])
+    if not awards:
+        awards = list(fallback.get("awards") or [])
+
     return {
         "name": name or resume_title,
         "contact": contact,
         "summary": summary,
+        "advantage": summary,
         "experience": entries_for("experience"),
         "projects": entries_for("projects"),
         "education": entries_for("education"),
         "skills": skills,
+        "awards": awards,
     }
 
 
@@ -549,5 +577,19 @@ def preserve_layout_entries(
 
     if skipped_mashed:
         notes.append(f"有 {skipped_mashed} 条粘连原文未回补，需从全文重新拆条")
+
+    orig_summary = str(original_sections.get("advantage") or original_sections.get("summary") or "").strip()
+    curr_summary = str(merged.get("advantage") or merged.get("summary") or "").strip()
+    if orig_summary and not curr_summary:
+        curr_summary = orig_summary
+        notes.append("已恢复个人优势模块")
+    merged["summary"] = curr_summary
+    merged["advantage"] = curr_summary
+
+    orig_awards = clean_list_items([str(x) for x in (original_sections.get("awards") or original_sections.get("award") or []) if x])
+    curr_awards = clean_list_items([str(x) for x in (merged.get("awards") or []) if x])
+    if orig_awards and not curr_awards:
+        merged["awards"] = orig_awards
+        notes.append(f"已恢复 {len(orig_awards)} 条荣誉奖项")
 
     return merged, notes

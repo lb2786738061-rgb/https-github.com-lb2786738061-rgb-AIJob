@@ -8,22 +8,23 @@ from pypdf import PdfReader
 
 # 关键词按长度降序，保证 "核心技术栈" 优先于 "技能" 匹配
 SECTION_KEYWORDS: dict[str, list[str]] = {
-    "summary": ["个人简介", "个人优势", "自我评价", "自我介绍", "个人总结", "about", "summary", "profile"],
+    "summary": ["个人简介", "个人优势", "核心优势", "自我评价", "自我介绍", "个人总结", "自我描述", "个人评价", "about", "summary", "profile", "advantage"],
     "education": ["教育背景", "教育经历", "学历背景", "教育", "学历", "education", "academic"],
     "experience": ["工作经历", "工作履历", "实习经历", "工作经验", "工作", "experience", "employment", "work"],
-    "skills": ["专业技能", "核心技能", "技能清单", "技能", "skills", "tech"],
+    "skills": ["专业技能", "核心技能", "核心技术栈", "技术栈", "技能清单", "技能", "skills", "skill", "tech"],
     "projects": ["项目经历", "项目经验", "项目作品", "项目列表", "projects", "project"],
+    "awards": ["荣誉奖项", "获奖情况", "奖项荣誉", "证书与奖项", "荣誉证书", "资格证书", "证书", "荣誉", "奖项", "获奖", "awards", "award", "honors", "certificates"],
 }
 
 # 章节标题正则（完整行匹配，兼容尾部冒号）
 SECTION_HEADER_PATTERN = re.compile(
     r"^("
-    r"个人简介|个人优势|自我评价|自我介绍|个人总结|about|summary|profile|"
+    r"个人简介|个人优势|核心优势|自我评价|自我介绍|个人总结|about|summary|profile|advantage|"
     r"教育背景|教育经历|学历背景|教育|学历|education|academic|"
     r"工作经历|工作履历|实习经历|工作经验|工作|experience|employment|work|"
-    r"专业技能|核心技能|技术栈|技能清单|技能|skills|tech|"
+    r"专业技能|核心技能|核心技术栈|技术栈|技能清单|技能|skills?|tech|"
     r"项目经历|项目经验|项目作品|项目列表|projects?|"
-    r"证书|荣誉|奖项|获奖情况|"
+    r"荣誉奖项|获奖情况|奖项荣誉|证书与奖项|荣誉证书|资格证书|证书|荣誉|奖项|获奖|awards?|honors|certificates|"
     r"兴趣爱好|自我描述|个人评价"
     r")\s*[:：]?\s*$",
     re.I,
@@ -31,12 +32,13 @@ SECTION_HEADER_PATTERN = re.compile(
 
 # 仅用较长标题拆行，避免短词「工作」「技能」误切「工作流」
 LONG_SECTION_TITLES = (
-    "个人简介", "个人优势", "自我评价", "自我介绍", "个人总结",
+    "个人简介", "个人优势", "核心优势", "自我评价", "自我介绍", "个人总结",
     "教育背景", "教育经历", "学历背景",
     "工作经历", "工作履历", "实习经历", "工作经验",
-    "专业技能", "核心技能", "技能清单", "技术栈",
+    "专业技能", "核心技能", "核心技术栈", "技能清单", "技术栈",
     "项目经历", "项目经验", "项目作品", "项目列表",
-    "获奖情况", "兴趣爱好", "自我描述", "个人评价",
+    "荣誉奖项", "获奖情况", "奖项荣誉", "证书与奖项", "荣誉证书", "资格证书",
+    "兴趣爱好", "自我描述", "个人评价",
 )
 LONG_SECTION_TITLE_RE = re.compile(
     "(" + "|".join(sorted((re.escape(title) for title in LONG_SECTION_TITLES), key=len, reverse=True)) + ")"
@@ -454,34 +456,87 @@ def structure_resume_text(raw_text: str) -> ParsedResume:
     normalized = _normalize_text(raw_text)
     cleaned = re.sub(r"\s{3,}", "\n", normalized).strip()
     cleaned = _split_inline_section_headers(cleaned)
+
+    contact_val = _extract_contact(cleaned)
+    summary_val = _extract_section(cleaned, SECTION_KEYWORDS["summary"])
+    education_val = _extract_list_items(cleaned, SECTION_KEYWORDS["education"])
+    experience_val = _extract_list_items(cleaned, SECTION_KEYWORDS["experience"])
+    skills_val = _extract_list_items(cleaned, SECTION_KEYWORDS["skills"])
+    projects_val = _extract_list_items(cleaned, SECTION_KEYWORDS["projects"])
+    awards_val = _extract_list_items(cleaned, SECTION_KEYWORDS["awards"])
+
     return {
         "rawText": cleaned,
         "sections": {
-            "contact": _extract_contact(cleaned),
-            "summary": _extract_section(cleaned, SECTION_KEYWORDS["summary"]),
-            "education": _extract_list_items(cleaned, SECTION_KEYWORDS["education"]),
-            "experience": _extract_list_items(cleaned, SECTION_KEYWORDS["experience"]),
-            "skills": _extract_list_items(cleaned, SECTION_KEYWORDS["skills"]),
-            "projects": _extract_list_items(cleaned, SECTION_KEYWORDS["projects"]),
+            "contact": contact_val,
+            "summary": summary_val,
+            "advantage": summary_val or "",
+            "education": education_val,
+            "experience": experience_val,
+            "skills": skills_val,
+            "skill": skills_val,
+            "projects": projects_val,
+            "project": projects_val,
+            "awards": awards_val,
+            "award": awards_val,
         },
     }
 
 
+def infer_target_job_from_parsed(parsed: ParsedResume) -> str:
+    """当用户未填写目标岗位时，尝试从简历原文或工作经历中推断目标岗位"""
+    raw = str(parsed.get("rawText") or "")
+    match = re.search(
+        r"(?:求职意向|意向岗位|目标岗位|应聘岗位|期望职位|求职岗位)\s*[:：]\s*([^\n|｜，,]{2,24})",
+        raw,
+    )
+    if match:
+        return match.group(1).strip()
+
+    sections = parsed.get("sections") or {}
+    exp_list = sections.get("experience") or []
+    for item in exp_list:
+        first_line = str(item).splitlines()[0].strip() if item else ""
+        role_match = re.search(
+            r"([\u4e00-\u9fffA-Za-z0-9+#\-]{2,16}(?:工程师|经理|主管|专员|开发|设计师|架构师|分析师|顾问|运营|实习生))",
+            first_line,
+        )
+        if role_match:
+            return role_match.group(1).strip()
+    return ""
+
+
 def parse_resume_file(file_path: str, mime_type: str = "") -> ParsedResume:
     path = Path(file_path)
+    ext = path.suffix.lower()
     raw_text = ""
 
-    if mime_type == "application/pdf" or path.suffix.lower() == ".pdf":
+    if ext == ".doc":
+        raise ValueError("暂不支持旧版 .doc 格式，请将文件另存为 .docx 或 PDF 格式后上传")
+
+    if mime_type == "application/pdf" or ext == ".pdf":
         raw_text = _extract_pdf_text(path)
-    elif "word" in mime_type or path.suffix.lower() in (".docx", ".doc"):
+    elif "word" in mime_type or ext == ".docx":
         doc = Document(str(path))
         raw_text = _extract_docx_text(doc)
-    elif mime_type == "text/plain" or path.suffix.lower() == ".txt":
-        raw_text = path.read_text(encoding="utf-8")
+    elif mime_type == "text/plain" or ext in (".txt", ".md"):
+        raw_text = path.read_text(encoding="utf-8", errors="ignore")
+    elif ext in (".png", ".jpg", ".jpeg", ".webp") or mime_type.startswith("image/"):
+        try:
+            import pymupdf
+
+            doc = pymupdf.open(str(path))
+            texts = [page.get_text("text") or "" for page in doc]
+            doc.close()
+            raw_text = "\n".join(texts).strip()
+        except Exception:
+            raw_text = ""
+        if not raw_text.strip():
+            raw_text = f"【图片简历：{path.stem}】\n个人优势：请在详情页补充或编辑图片中的简历信息"
     else:
-        raise ValueError("Unsupported file format. Use PDF, Word, or TXT.")
+        raise ValueError("不支持的文件格式，请上传 PDF、Word (.docx)、图片或 TXT 文件")
 
     if not raw_text.strip():
-        raise ValueError("Could not extract text from resume file.")
+        raise ValueError("未能从简历文件中提取出有效文本，请检查文件是否为空或加密")
 
     return structure_resume_text(raw_text)

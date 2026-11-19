@@ -20,6 +20,10 @@ from app.services.interview_engine import (
     should_insert_probe,
 )
 from app.services.tech_interview import public_tech_agenda, tech_slot_for
+from app.services.weak_questions import (
+    get_user_exam_preferences,
+    record_question_evaluation,
+)
 
 
 def _session_value(session, key: str, default=None):
@@ -34,8 +38,11 @@ def resolve_session_context(session) -> dict:
     db = get_db()
     difficulty = str(_session_value(session, "difficulty") or "standard")
     target_job = str(_session_value(session, "target_job_title") or "")
+    experience_years = str(_session_value(session, "experience_years") or "")
+    session_jd = str(_session_value(session, "job_description") or "")
+    duration_limit_sec = _session_value(session, "duration_limit_sec")
     resume_brief = ""
-    job_description = ""
+    job_description = session_jd
     tech_agenda: list = []
     tech_stack: list = []
     if session["resume_id"]:
@@ -45,7 +52,7 @@ def resolve_session_context(session) -> dict:
         if resume:
             ctx = load_resume_interview_context(resume)
             resume_brief = ctx["resumeBrief"]
-            job_description = ctx["jobDescription"]
+            job_description = session_jd or ctx["jobDescription"]
             target_job = target_job or ctx["targetJobTitle"]
             role = session["interviewer_role"] or ""
             if role == "technical" or role.startswith("enterprise:"):
@@ -55,6 +62,8 @@ def resolve_session_context(session) -> dict:
     return {
         "difficulty": difficulty,
         "targetJobTitle": target_job,
+        "experienceYears": experience_years,
+        "durationLimitSec": int(duration_limit_sec) if duration_limit_sec else None,
         "resumeBrief": resume_brief,
         "jobDescription": job_description,
         "techAgenda": tech_agenda,
@@ -169,13 +178,40 @@ async def process_interview_answer(
         ),
     )
 
+    # 自动同步本题评估至弱题复盘/错题本（<70分默认进弱题且开启下次再考，>=70分默认已掌握且由用户勾选是否再出）
+    try:
+        weak_record = record_question_evaluation(
+            user_id=user_id,
+            session_id=session_id,
+            resume_id=session["resume_id"],
+            question=last_question["content"],
+            answer=answer_text,
+            evaluation=evaluation,
+            interviewer_role=session["interviewer_role"],
+            target_job_title=ctx["targetJobTitle"],
+            skipped=skipped,
+        )
+    except Exception:
+        weak_record = None
+
     history = [
         {"role": m["role"], "content": m["content"]}
         for m in messages
         if m["role"] in ("user", "assistant")
     ] + [{"role": "user", "content": answer_text}]
 
-    time_exceeded = not is_enterprise and not paid and elapsed_sec >= FREE_MAX_DURATION_SEC
+    session_limit_sec = ctx.get("durationLimitSec")
+    effective_limit_sec = session_limit_sec or (None if paid else FREE_MAX_DURATION_SEC)
+    time_exceeded = (
+        not is_enterprise
+        and effective_limit_sec is not None
+        and elapsed_sec >= effective_limit_sec
+    )
+
+    try:
+        exam_preferences = get_user_exam_preferences(user_id, session["interviewer_role"])
+    except Exception:
+        exam_preferences = None
 
     next_question = None
     next_is_probe = False
@@ -216,6 +252,8 @@ async def process_interview_answer(
                     last_evaluation=evaluation,
                     probe=next_is_probe,
                     tech_agenda=ctx.get("techAgenda") or [],
+                    experience_years=ctx.get("experienceYears") or "",
+                    exam_preferences=exam_preferences,
                 )
 
         if next_question:
@@ -256,6 +294,7 @@ async def process_interview_answer(
 
     return {
         "evaluation": evaluation,
+        "weakQuestionRecord": weak_record,
         "nextQuestion": next_question,
         "questionCount": issued,
         "isComplete": is_complete,

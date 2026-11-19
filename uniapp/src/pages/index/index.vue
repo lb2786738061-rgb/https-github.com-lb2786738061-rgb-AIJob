@@ -35,8 +35,9 @@ import { clearToken, getToken, requireLogin, toast } from "@/utils/auth";
 const loggedIn = ref(false);
 const userName = ref("");
 const features = [
-  { title: "简历诊断", path: "/pages/resume/resume", desc: "上传简历 AI 分析" },
-  { title: "模拟面试", path: "/pages/interview/interview", desc: "多角色全真模拟" },
+  { title: "简历工作台", path: "/pages/resume/resume", desc: "上传解析 · 个人优势/经历编辑 · AI诊断" },
+  { title: "模拟面试", path: "/pages/interview/interview", desc: "按简历与岗位出题 · 支持换一题" },
+  { title: "弱题复盘", path: "/pages/practice/drill", desc: "错题对照练习 · 再次评估 · 下次再考偏好" },
   { title: "名企冲刺", path: "/pages/enterprise/enterprise", desc: "大厂真题训练" },
   { title: "升级会员", path: "/pages/pricing/pricing", desc: "月卡/季卡/冲刺包" },
 ];

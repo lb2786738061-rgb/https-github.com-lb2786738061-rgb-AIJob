@@ -161,6 +161,56 @@ def list_user_orders(user_id: int) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+def refund_order(user_id: int, order_id: int, reason: str = "") -> dict:
+    db = get_db()
+    row = db.execute(
+        "SELECT * FROM subscription_orders WHERE id = ? AND user_id = ?",
+        (order_id, user_id),
+    ).fetchone()
+    if not row:
+        raise LookupError("Order not found")
+    order = dict(row)
+    if order["status"] != "paid":
+        raise ValueError("Only paid orders can be refunded")
+    if order.get("refund_status") == "refunded":
+        raise ValueError("Order already refunded")
+
+    now = datetime.now(timezone.utc).isoformat()
+    refund_reason = reason.strip() or "用户在管理面板申请退款"
+
+    if order["plan_type"] == "enterprise_pack":
+        db.execute(
+            "UPDATE usage_quotas SET enterprise_credits = MAX(0, enterprise_credits - 1) WHERE user_id = ?",
+            (user_id,),
+        )
+    elif order["plan_type"] in ("monthly", "quarterly"):
+        other_active = db.execute(
+            """SELECT id FROM subscription_orders
+               WHERE user_id = ? AND id != ? AND status = 'paid'
+                 AND plan_type IN ('monthly', 'quarterly')""",
+            (user_id, order_id),
+        ).fetchone()
+        if not other_active:
+            db.execute("UPDATE users SET plan_tier = 'free' WHERE id = ?", (user_id,))
+
+    db.execute(
+        """UPDATE subscription_orders
+           SET status = 'refunded',
+               refund_status = 'refunded',
+               refund_reason = ?,
+               refunded_at = ?
+           WHERE id = ?""",
+        (refund_reason, now, order_id),
+    )
+    db.commit()
+
+    updated = db.execute(
+        "SELECT * FROM subscription_orders WHERE id = ?", (order_id,)
+    ).fetchone()
+    return dict(updated)
+
+
+
 def has_active_membership(user_id: int) -> bool:
     db = get_db()
     row = db.execute(

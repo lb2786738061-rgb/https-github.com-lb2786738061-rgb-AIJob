@@ -22,13 +22,14 @@ interface ResumeBeautifyPanelProps {
 }
 
 const LIST_SECTIONS: Array<{
-  key: "experience" | "projects" | "education" | "skills";
+  key: "experience" | "projects" | "education" | "skills" | "awards";
   label: string;
 }> = [
   { key: "experience", label: "工作经历" },
   { key: "projects", label: "项目经历" },
   { key: "education", label: "教育背景" },
   { key: "skills", label: "专业技能" },
+  { key: "awards", label: "荣誉奖项" },
 ];
 
 export default function ResumeBeautifyPanel({

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 
 from app.middleware.auth import get_auth_context
 from app.services import payments as payment_service
@@ -84,3 +84,24 @@ async def confirm_payment(order_id: int, auth: dict = Depends(get_auth_context))
         "order": row_to_camel(order),
         "message": "支付成功，权益已开通",
     }
+
+
+@router.post("/orders/{order_id}/refund")
+async def refund_order(
+    order_id: int,
+    body: dict = Body(default={}),
+    auth: dict = Depends(get_auth_context),
+):
+    reason = (body or {}).get("reason", "")
+    try:
+        order = payment_service.refund_order(auth["userId"], order_id, reason)
+    except LookupError:
+        raise HTTPException(status_code=404, detail={"error": "订单不存在"}) from None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"error": str(exc)}) from exc
+
+    return {
+        "order": row_to_camel(order),
+        "message": "退款处理成功，权益已调整",
+    }
+

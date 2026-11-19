@@ -315,21 +315,27 @@ def build_resume_brief(
     if target_job_title:
         lines.append(f"目标岗位：{target_job_title}")
 
-    summary = str(layout.get("summary") or sections.get("summary") or "").strip()
+    summary = str(
+        layout.get("advantage")
+        or layout.get("summary")
+        or sections.get("advantage")
+        or sections.get("summary")
+        or ""
+    ).strip()
     if summary:
-        lines.append("简介：" + _clip(_join_section(summary), 280))
+        lines.append("个人优势：" + _clip(_join_section(summary), 280))
 
     experience = layout.get("experience") or sections.get("experience") or []
     exp_text = _join_section(experience)
     if exp_text:
         lines.append("经历：\n" + _clip(exp_text, 500))
 
-    projects = layout.get("projects") or sections.get("projects") or []
+    projects = layout.get("projects") or sections.get("projects") or sections.get("project") or []
     proj_text = _join_section(projects)
     if proj_text:
         lines.append("项目：\n" + _clip(proj_text, 420))
 
-    skills = layout.get("skills") or sections.get("skills") or []
+    skills = layout.get("skills") or sections.get("skills") or sections.get("skill") or []
     if isinstance(skills, dict):
         groups = skills.get("groups") or []
         skill_bits = []
@@ -341,6 +347,11 @@ def build_resume_brief(
         skill_text = _join_section(skills)
     if skill_text:
         lines.append("技能：" + _clip(skill_text.replace("\n", "、"), 400))
+
+    awards = layout.get("awards") or sections.get("awards") or sections.get("award") or []
+    award_text = _join_section(awards)
+    if award_text:
+        lines.append("荣誉奖项：" + _clip(award_text.replace("\n", "；"), 200))
 
     techs = extract_resume_techs(parsed)
     stack_line = format_tech_stack_line(techs)
@@ -405,6 +416,8 @@ def _build_context_prompt(
     role_id: str | None = None,
     tech_agenda: list[dict] | None = None,
     probe: bool = False,
+    experience_years: str = "",
+    exam_preferences: dict[str, list[str]] | None = None,
 ) -> str:
     parts: list[str] = []
     industry_name = get_industry_name(industry)
@@ -412,6 +425,8 @@ def _build_context_prompt(
         parts.append(f"目标行业：{industry_name}")
     if target_job_title:
         parts.append(f"目标岗位：{target_job_title}")
+    if experience_years:
+        parts.append(f"工作年限：{experience_years}")
     if job_description:
         parts.append(f"目标岗位 JD：\n{_clip(job_description, 800)}")
     if resume_brief:
@@ -426,6 +441,25 @@ def _build_context_prompt(
     agenda_prompt = format_tech_agenda_prompt(tech_agenda or [], current_slot)
     if agenda_prompt:
         parts.append(agenda_prompt)
+    if exam_preferences:
+        weak_retry = exam_preferences.get("weakRetry") or []
+        mastered_rephrase = exam_preferences.get("masteredRephrase") or []
+        mastered_skip = exam_preferences.get("masteredSkip") or []
+        if weak_retry:
+            parts.append(
+                "【历史弱题复考偏好（候选人上次未答好，请结合其简历优先考察这些薄弱考点）】：\n"
+                + "\n".join(f"- {_clip(q, 100)}" for q in weak_retry[:3])
+            )
+        if mastered_rephrase:
+            parts.append(
+                "【已掌握但候选人勾选“下次再出”的考点（必须换一种全新的问法或更深一层边界场景来考察，禁止照搬原句）】：\n"
+                + "\n".join(f"- 原题：{_clip(q, 100)}" for q in mastered_rephrase[:3])
+            )
+        if mastered_skip:
+            parts.append(
+                "【已掌握且不再重复考察的题目（请避开这些原题）】：\n"
+                + "\n".join(f"- {_clip(q, 80)}" for q in mastered_skip[:4])
+            )
     if last_evaluation:
         gaps = last_evaluation.get("missedPoints") or []
         gap_text = "；".join(str(g) for g in gaps[:3] if g)
@@ -448,6 +482,23 @@ def clean_interviewer_question(text: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
+def _extract_resume_anchor(resume_brief: str) -> str:
+    """从简历摘要中提取一段具体的项目名、经历或核心技能，用于锚定规则降级出题"""
+    if not resume_brief:
+        return ""
+    for line in resume_brief.splitlines():
+        text = line.strip()
+        if not text or text.startswith(("候选人：", "目标岗位：", "目标 JD")):
+            continue
+        if text.startswith(("经历：", "项目：", "个人优势：", "简介：", "技能：")):
+            rest = re.sub(r"^(经历|项目|个人优势|简介|技能)\s*[:：]\s*", "", text).strip()
+            if rest:
+                return _clip(rest.split("；")[0].split("。")[0], 36)
+        elif len(text) >= 4:
+            return _clip(text.split("；")[0].split("。")[0], 36)
+    return ""
+
+
 def _fallback_question(
     role_id: str,
     question_index: int,
@@ -455,17 +506,34 @@ def _fallback_question(
     tech_agenda: list[dict] | None = None,
     *,
     probe: bool = False,
+    exam_preferences: dict[str, list[str]] | None = None,
 ) -> str:
+    # 优先响应用户的错题本与再考偏好（在非第1题时穿插考察）
+    if not probe and exam_preferences and question_index >= 2:
+        weak_list = exam_preferences.get("weakRetry") or []
+        rephrase_list = exam_preferences.get("masteredRephrase") or []
+        if weak_list and question_index == 2:
+            raw_q = re.sub(r"^【.*?】", "", weak_list[0]).strip()
+            return f"结合你简历中的实际项目经历，我们重点复盘一个核心问题：{raw_q}"
+        if rephrase_list and question_index == 3:
+            raw_q = re.sub(r"^【.*?】", "", rephrase_list[0]).strip()
+            return f"换个更高压的实战边界来考考你：在「{_clip(raw_q, 48)}」对应的场景下，如果资源受限或流量突增3倍，你的方案会如何取舍与演进？"
+
     slot = tech_slot_for(tech_agenda or [], question_index, probe=probe)
     if slot and (role_id == "technical" or tech_agenda):
         return slot["ask"]
     pool = FALLBACK_QUESTIONS.get(role_id) or FALLBACK_QUESTIONS["hr"]
     idx = min(max(question_index, 1), len(pool)) - 1
     question = pool[idx]
+    anchor = _extract_resume_anchor(resume_brief)
     if resume_brief and question_index == 1:
         if role_id == "english":
             return "I've reviewed your background. " + question
+        if anchor:
+            return f"我已对照你的简历（重点关注「{anchor}」）。" + question
         return "我已对照你的简历。" + question
+    if anchor and role_id != "english" and question_index in (2, 4):
+        return f"围绕你简历里提到的「{anchor}」，{question}"
     return question
 
 
@@ -479,6 +547,8 @@ async def get_opening_question(
     difficulty: str = "standard",
     resume_brief: str = "",
     tech_agenda: list[dict] | None = None,
+    experience_years: str = "",
+    exam_preferences: dict[str, list[str]] | None = None,
 ) -> str:
     role = INTERVIEWER_ROLES[role_id]
     brief = resume_brief or resume_context
@@ -491,6 +561,8 @@ async def get_opening_question(
         1,
         role_id=role_id,
         tech_agenda=tech_agenda,
+        experience_years=experience_years,
+        exam_preferences=exam_preferences,
     )
 
     if is_llm_available():
@@ -505,8 +577,8 @@ async def get_opening_question(
                 role["systemPrompt"]
                 + "\n\n"
                 + context_part
-                + "\n\n请生成第一个开场面试问题。必须结合已知背景（简历/岗位/行业），"
-                "禁止只问「请做自我介绍」这种没有锚点的问题。"
+                + "\n\n请生成第一个开场面试问题。必须结合已知背景（候选人简历中的具体经历/项目/个人优势与目标岗位），"
+                "禁止脱离简历随机出题，禁止只问「请做自我介绍」这种没有锚点的问题。"
                 + extra
                 + "只输出问题本身，不要编号、引号或解释。"
             )
@@ -517,7 +589,9 @@ async def get_opening_question(
         except Exception:
             pass
 
-    return _fallback_question(role_id, 1, brief, tech_agenda)
+    return _fallback_question(
+        role_id, 1, brief, tech_agenda, exam_preferences=exam_preferences
+    )
 
 
 async def generate_follow_up_question(
@@ -533,6 +607,8 @@ async def generate_follow_up_question(
     last_evaluation: dict | None = None,
     probe: bool = False,
     tech_agenda: list[dict] | None = None,
+    experience_years: str = "",
+    exam_preferences: dict[str, list[str]] | None = None,
 ) -> str:
     role = INTERVIEWER_ROLES.get(role_id) or INTERVIEWER_ROLES["technical"]
     main_asked = sum(
@@ -553,6 +629,8 @@ async def generate_follow_up_question(
         role_id=role_id,
         tech_agenda=tech_agenda,
         probe=probe,
+        experience_years=experience_years,
+        exam_preferences=exam_preferences,
     )
 
     if not is_llm_available():
@@ -562,6 +640,7 @@ async def generate_follow_up_question(
             brief,
             tech_agenda,
             probe=probe,
+            exam_preferences=exam_preferences,
         )
         return f"{PROBE_PREFIX}{question}" if probe else question
 
@@ -570,7 +649,7 @@ async def generate_follow_up_question(
             "上一题回答偏浅，请针对对方刚刚说过的原话、就当前同一个技术考点再挖一层，不要换新技术。"
             if probe
             else (
-                "若上一题该考点已答到原理层，立即进入清单中的下一个技术维度；"
+                "若上一题该考点已答到原理层，立即进入清单中的下一个技术维度或结合历史弱题/再考偏好提问；"
                 "若只是空话，先就同一技术补问原理/故障，仍不要跳题。"
             )
         )
@@ -579,7 +658,7 @@ async def generate_follow_up_question(
             + "\n\n"
             + context_part
             + f"\n\n已进行 {main_asked} 轮主问题。{probe_rule}"
-            "每次只问一个问题。技术面不要改成纯行为面试。"
+            "出题必须紧扣候选人简历与目标岗位，每次只问一个问题。技术面不要改成纯行为面试。"
             "只输出问题本身，不要点评、不要示范答案、不要 markdown。"
         )
         result = await chat_with_history(system_prompt, history)
@@ -595,8 +674,94 @@ async def generate_follow_up_question(
         brief,
         tech_agenda,
         probe=probe,
+        exam_preferences=exam_preferences,
     )
     return f"{PROBE_PREFIX}{question}" if probe else question
+
+
+async def generate_replacement_question(
+    role_id: str,
+    current_question: str,
+    excluded_questions: list[str],
+    *,
+    question_index: int = 1,
+    resume_brief: str = "",
+    industry: str | None = None,
+    job_description: str = "",
+    target_job_title: str = "",
+    difficulty: str = "standard",
+    tech_agenda: list[dict] | None = None,
+    experience_years: str = "",
+) -> str:
+    """为当前未作答题目生成一道全新切入角度的替换题（I-05：换一题，禁止与原题高度相似）"""
+    resolved_role = "technical" if (role_id or "").startswith("enterprise:") else (role_id or "technical")
+    role = INTERVIEWER_ROLES.get(resolved_role) or INTERVIEWER_ROLES["technical"]
+    context_part = _build_context_prompt(
+        resume_brief,
+        industry,
+        job_description,
+        target_job_title,
+        difficulty,
+        question_index,
+        role_id=resolved_role,
+        tech_agenda=tech_agenda,
+        experience_years=experience_years,
+    )
+
+    excluded_set = {q.strip() for q in excluded_questions if q and q.strip()}
+    excluded_set.add((current_question or "").strip())
+
+    if is_llm_available():
+        try:
+            excluded_text = "\n".join(f"- {_clip(q, 90)}" for q in list(excluded_set)[:8])
+            system_prompt = (
+                role["systemPrompt"]
+                + "\n\n"
+                + context_part
+                + "\n\n候选人请求将当前未作答的题目【换一题】。\n"
+                f"原题为：{current_question}\n"
+                f"已问过或已排除的题目：\n{excluded_text}\n\n"
+                "请严格基于候选人简历中的另一段项目/经历、或不同的考察维度（例如：架构取舍、线上故障定位、跨团队推进、量化指标复盘、核心技术边界），"
+                "重新生成一道全新的面试题。要求：新题切入角度必须与原题显著不同，禁止与原题高度相似。只输出问题本身。"
+            )
+            result = await chat_completion(system_prompt, "请生成一道不同切入角度的新面试题。", json_mode=False)
+            cleaned = clean_interviewer_question(result)
+            if cleaned and cleaned not in excluded_set:
+                return cleaned
+        except Exception:
+            pass
+
+    # 规则降级换题：遍历不同角度备用题池 + 简历锚点，确保与原题及已问题目不同
+    anchor = _extract_resume_anchor(resume_brief)
+    job_tag = target_job_title or "该岗位"
+    alternate_angles = [
+        f"换个项目实战角度：结合你简历中的「{anchor or '核心项目'}」，当时在技术选型或方案设计上有哪两个备选方案？你为什么做此取舍，最终量化收益是多少？",
+        f"从线上稳定性与排障角度来看：在你负责的「{anchor or '核心系统'}」中，遇到过最棘手的一次性能瓶颈或故障是什么？你是如何定位根因并防止复发的？",
+        f"从个人职责边界角度深挖：在「{anchor or '你主导的项目'}」里，哪些核心模块或关键决策是你独立完成的？如果流量或业务规模扩大 5 倍，现有方案最先在哪里出瓶颈？",
+        f"围绕你应聘的「{job_tag}」岗位要求：对比你简历里的个人优势与技能栈，你认为自己目前最突出的一个技术/业务壁垒是什么？请用一个有数据支撑的案例证明。",
+        f"从协作与高优先级冲突角度：在推进「{anchor or '过往重点项目'}」时，如果上游需求临时变更且交付周期砍半，你是如何重新拆解任务优先级并保住核心指标的？",
+    ]
+    if resolved_role == "english":
+        alternate_angles = [
+            "Let's switch to a different angle based on your resume: Tell me about a critical technical or business trade-off you made in your main project, and what measurable impact it delivered.",
+            "Looking at your hands-on experience: What was the toughest bottleneck or unexpected issue you encountered, and how did you diagnose and resolve it step by step?",
+            "From an ownership perspective: Which specific module or decision in your recent project was 100% driven by you, and what metrics proved its success?",
+        ]
+
+    # 也把 tech_agenda 的其他槽位以及 FALLBACK_QUESTIONS 纳入候选
+    candidates: list[str] = list(alternate_angles)
+    for slot in (tech_agenda or []):
+        ask = str(slot.get("ask") or "").strip()
+        if ask:
+            candidates.append(ask)
+    for q in (FALLBACK_QUESTIONS.get(resolved_role) or FALLBACK_QUESTIONS["hr"]):
+        candidates.append(f"结合你简历中的「{anchor}」，{q}" if (anchor and resolved_role != "english") else q)
+
+    for cand in candidates:
+        if cand.strip() not in excluded_set and cand.strip() != (current_question or "").strip():
+            return cand.strip()
+
+    return candidates[0]
 
 
 def _star_coverage(answer: str) -> dict[str, bool]:

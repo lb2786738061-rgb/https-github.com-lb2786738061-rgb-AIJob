@@ -1,13 +1,14 @@
 import re
 from typing import Any
 
-LIST_SECTION_KEYS = ("experience", "projects", "education", "skills")
+LIST_SECTION_KEYS = ("experience", "projects", "education", "skills", "awards")
 
 SECTION_LABELS = {
     "experience": "工作经历",
     "projects": "项目经历",
     "education": "教育背景",
     "skills": "技能",
+    "awards": "荣誉奖项",
 }
 
 ITEM_MAX_LENGTH = 2000
@@ -101,6 +102,20 @@ def preserve_section_lists(
         else:
             merged[key] = updated_items
 
+    # 保证个人优势（summary / advantage）不被静默丢失
+    orig_summary = str(original_sections.get("advantage") or original_sections.get("summary") or "").strip()
+    curr_summary = str(merged.get("advantage") or merged.get("summary") or "").strip()
+    if orig_summary and not curr_summary:
+        curr_summary = orig_summary
+        notes.append("已恢复个人优势模块（模型未返回）")
+    merged["summary"] = curr_summary
+    merged["advantage"] = curr_summary
+
+    # 同步标准别名字段（R-03 要求：contact、advantage、education、experience、project、skill、award）
+    merged["project"] = list(merged.get("projects") or [])
+    merged["skill"] = list(merged.get("skills") or [])
+    merged["award"] = list(merged.get("awards") or [])
+
     return merged, notes
 
 
@@ -108,13 +123,22 @@ def build_sections_from_llm(
     original_sections: dict[str, Any],
     llm_sections: dict[str, Any],
 ) -> tuple[dict[str, Any], list[str]]:
+    summary_val = str(
+        llm_sections.get("advantage")
+        or llm_sections.get("summary")
+        or original_sections.get("advantage")
+        or original_sections.get("summary")
+        or ""
+    )
     candidate = {
         "contact": str(llm_sections.get("contact") or original_sections.get("contact") or ""),
-        "summary": str(llm_sections.get("summary") or original_sections.get("summary") or ""),
+        "summary": summary_val,
+        "advantage": summary_val,
         "experience": clean_list_items(list(llm_sections.get("experience") or [])),
-        "skills": clean_list_items(list(llm_sections.get("skills") or [])),
+        "skills": clean_list_items(list(llm_sections.get("skills") or llm_sections.get("skill") or [])),
         "education": clean_list_items(list(llm_sections.get("education") or [])),
-        "projects": clean_list_items(list(llm_sections.get("projects") or [])),
+        "projects": clean_list_items(list(llm_sections.get("projects") or llm_sections.get("project") or [])),
+        "awards": clean_list_items(list(llm_sections.get("awards") or llm_sections.get("award") or [])),
     }
     merged, notes = preserve_section_lists(original_sections, candidate)
     return merged, notes

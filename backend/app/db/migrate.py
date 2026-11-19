@@ -1,4 +1,4 @@
-"""Run database migrations: python -m app.db.migrate"""
+"""执行数据库迁移"""
 
 import sqlite3
 
@@ -34,6 +34,15 @@ CREATE TABLE IF NOT EXISTS user_resume (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS resume_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  resume_id INTEGER NOT NULL REFERENCES user_resume(id),
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  version_label TEXT NOT NULL,
+  parsed_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS mock_interview_session (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id),
@@ -64,6 +73,30 @@ CREATE TABLE IF NOT EXISTS interview_messages (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS interview_weak_questions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  session_id INTEGER REFERENCES mock_interview_session(id),
+  resume_id INTEGER REFERENCES user_resume(id),
+  question TEXT NOT NULL,
+  last_answer TEXT,
+  model_answer TEXT,
+  interviewer_role TEXT,
+  target_job_title TEXT,
+  score_overall INTEGER NOT NULL DEFAULT 0,
+  score_logic INTEGER NOT NULL DEFAULT 0,
+  score_professional INTEGER NOT NULL DEFAULT 0,
+  score_match INTEGER NOT NULL DEFAULT 0,
+  score_expression INTEGER NOT NULL DEFAULT 0,
+  deduction_notes TEXT,
+  score_json TEXT,
+  status TEXT NOT NULL DEFAULT 'weak',
+  next_exam_enabled INTEGER NOT NULL DEFAULT 1,
+  practice_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS subscription_orders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id),
@@ -82,6 +115,25 @@ CREATE TABLE IF NOT EXISTS usage_quotas (
   mock_interview_used INTEGER NOT NULL DEFAULT 0,
   reset_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS sms_verifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  phone TEXT NOT NULL,
+  code TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS guest_diagnoses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id TEXT NOT NULL,
+  client_ip TEXT,
+  target_job_title TEXT,
+  resume_snippet TEXT,
+  score_overall INTEGER,
+  created_at TEXT NOT NULL
+);
 """
 
 ALTER_STATEMENTS = [
@@ -97,6 +149,16 @@ ALTER_STATEMENTS = [
     "ALTER TABLE user_resume ADD COLUMN file_mime_type TEXT",
     "ALTER TABLE mock_interview_session ADD COLUMN difficulty TEXT DEFAULT 'standard'",
     "ALTER TABLE mock_interview_session ADD COLUMN target_job_title TEXT",
+    "ALTER TABLE mock_interview_session ADD COLUMN experience_years TEXT",
+    "ALTER TABLE mock_interview_session ADD COLUMN job_description TEXT",
+    "ALTER TABLE mock_interview_session ADD COLUMN duration_limit_sec INTEGER DEFAULT 900",
+    "ALTER TABLE users ADD COLUMN phone TEXT",
+    "ALTER TABLE users ADD COLUMN target_job_title TEXT",
+    "ALTER TABLE users ADD COLUMN privacy_settings TEXT DEFAULT '{}'",
+    "ALTER TABLE users ADD COLUMN is_deleted INTEGER DEFAULT 0",
+    "ALTER TABLE subscription_orders ADD COLUMN refund_status TEXT DEFAULT 'none'",
+    "ALTER TABLE subscription_orders ADD COLUMN refund_reason TEXT",
+    "ALTER TABLE subscription_orders ADD COLUMN refunded_at TEXT",
 ]
 
 

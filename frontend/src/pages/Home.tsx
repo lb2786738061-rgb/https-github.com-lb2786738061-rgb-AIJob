@@ -40,10 +40,10 @@ const FEATURES = [
   },
   {
     Icon: ChartIcon,
-    title: "深度复盘报告",
-    desc: "输出综合评分、优势短板、STAR 覆盖与练习建议，把每一次面试转化为可执行提升路径。",
-    to: "/interview",
-    tag: "复盘增长",
+    title: "弱题复盘与深度报告",
+    desc: "答错弱题自动沉淀，支持对照满分示范重练评估、控制下次是否再考，形成练习闭环。",
+    to: "/practice",
+    tag: "复盘闭环",
     color: "from-violet-50 to-purple-50 border-violet-200",
   },
 ];

@@ -25,6 +25,12 @@
       }
     },
     {
+      "path": "pages/practice/drill",
+      "style": {
+        "navigationBarTitleText": "弱题复盘"
+      }
+    },
+    {
       "path": "pages/report/report",
       "style": {
         "navigationBarTitleText": "复盘报告"

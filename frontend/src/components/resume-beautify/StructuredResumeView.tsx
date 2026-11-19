@@ -36,6 +36,18 @@ export default function StructuredResumeView({
     ...layout.contactShort,
   ];
 
+  const advantageText =
+    parsed.sections?.advantage?.trim() ||
+    layout.summary?.trim() ||
+    parsed.sections?.summary?.trim() ||
+    "";
+  const awardItems =
+    (parsed.sections?.awards && parsed.sections.awards.length > 0
+      ? parsed.sections.awards
+      : parsed.sections?.award) ??
+    parsed.layout?.awards ??
+    [];
+
   return (
     <div className="space-y-5 text-sm text-ink">
       <Block label="联系方式">
@@ -46,13 +58,21 @@ export default function StructuredResumeView({
         )}
       </Block>
 
-      <Block label="个人简介">
-        {layout.summary ? <SummaryBlock text={layout.summary} accent={accent} /> : <EmptyHint />}
+      <Block label="个人优势">
+        {advantageText ? <SummaryBlock text={advantageText} accent={accent} /> : <EmptyHint />}
       </Block>
 
       <Block label="工作经历">
         {layout.experience.length > 0 ? (
           <EntryList entries={layout.experience} accent={accent} />
+        ) : (
+          <EmptyHint />
+        )}
+      </Block>
+
+      <Block label="项目经历">
+        {layout.projects.length > 0 ? (
+          <EntryList entries={layout.projects} accent={accent} />
         ) : (
           <EmptyHint />
         )}
@@ -70,9 +90,15 @@ export default function StructuredResumeView({
         )}
       </Block>
 
-      <Block label="项目经历">
-        {layout.projects.length > 0 ? (
-          <EntryList entries={layout.projects} accent={accent} />
+      <Block label="荣誉奖项">
+        {awardItems.length > 0 ? (
+          <ul className="space-y-1.5 pl-4 list-disc text-ink-muted">
+            {awardItems.map((item, idx) => (
+              <li key={idx} className="leading-relaxed">
+                {item}
+              </li>
+            ))}
+          </ul>
         ) : (
           <EmptyHint />
         )}

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import {
   api,
   type Resume,
+  type ResumeVersion,
   type StarSuggestion,
   type ParsedResume,
   type UploadResult,
@@ -12,7 +13,7 @@ import ResumeBeautifyPanel from "../components/resume-beautify/ResumeBeautifyPan
 import StructuredResumeView from "../components/resume-beautify/StructuredResumeView";
 import { useToast } from "../components/Toast";
 import { useAuth } from "../context/AuthContext";
-import { SparkleIcon, TrashIcon, AlertIcon } from "../components/Icons";
+import { SparkleIcon, AlertIcon } from "../components/Icons";
 
 function textareaRows(text: string, min = 2, max = 20): number {
   const lines = text.split("\n").filter(Boolean).length || 1;
@@ -20,7 +21,7 @@ function textareaRows(text: string, min = 2, max = 20): number {
 }
 
 function applyAnalysisResult(
-  data: { resume: Resume; starRewrite: { suggestions: StarSuggestion[]; summary: string }; jdMatch?: unknown },
+  data: { resume: Resume; starRewrite?: { suggestions: StarSuggestion[]; summary: string }; jdMatch?: unknown },
   setters: {
     setResult: (r: Resume) => void;
     setStarSuggestions: (s: StarSuggestion[]) => void;
@@ -31,14 +32,17 @@ function applyAnalysisResult(
   }
 ) {
   setters.setResult(data.resume);
-  setters.setStarSuggestions(data.starRewrite.suggestions);
-  setters.setStarSummary(data.starRewrite.summary);
+  setters.setStarSuggestions(data.starRewrite?.suggestions ?? []);
+  setters.setStarSummary(data.starRewrite?.summary ?? "");
   if (data.resume.jdMatchReport) {
     setters.setJdMatchReport(data.resume.jdMatchReport);
   } else if (data.jdMatch && typeof data.jdMatch === "object") {
     const jd = data.jdMatch as { report?: string; missingKeywords?: string[] };
     if (jd.report) setters.setJdMatchReport(jd.report);
     setters.setMissingKeywords(jd.missingKeywords ?? []);
+  } else {
+    setters.setJdMatchReport("");
+    setters.setMissingKeywords([]);
   }
   if (data.resume.missingKeywords) {
     setters.setMissingKeywords(JSON.parse(data.resume.missingKeywords));
@@ -51,9 +55,11 @@ function applyAnalysisResult(
 function StarEditor({
   resumeId,
   suggestion,
+  onReplaceInResume,
 }: {
   resumeId: number;
   suggestion: StarSuggestion;
+  onReplaceInResume?: (original: string, rewritten: string) => void;
 }) {
   const { toast } = useToast();
   const [fields, setFields] = useState(suggestion);
@@ -103,7 +109,7 @@ function StarEditor({
           />
         </div>
       ))}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <button
           onClick={generateRewrite}
           disabled={loading}
@@ -111,6 +117,15 @@ function StarEditor({
         >
           {loading ? "生成中..." : "生成重写"}
         </button>
+        {onReplaceInResume && (
+          <button
+            type="button"
+            onClick={() => onReplaceInResume(fields.original, rewritten)}
+            className="btn-secondary !text-xs !py-1.5 !px-3 !border-cyan-300 !text-cyan-800"
+          >
+            确认替换至简历
+          </button>
+        )}
         <button onClick={copyText} className="btn-secondary !text-xs !py-1.5 !px-3">
           复制
         </button>
@@ -160,6 +175,9 @@ export default function ResumeWorkbench() {
   const [editingSections, setEditingSections] = useState(false);
   const [showRawText, setShowRawText] = useState(false);
   const [llmEnabled, setLlmEnabled] = useState(true);
+  const [versions, setVersions] = useState<ResumeVersion[]>([]);
+  const [showVersions, setShowVersions] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<string | null>(null);
 
   const setters = {
     setResult,
@@ -176,6 +194,17 @@ export default function ResumeWorkbench() {
   }, []);
 
   useEffect(() => {
+    if (!result?.id) {
+      setVersions([]);
+      return;
+    }
+    api
+      .getResumeVersions(result.id)
+      .then((res) => setVersions(res.versions ?? []))
+      .catch(() => setVersions([]));
+  }, [result?.id, result?.updatedAt]);
+
+  useEffect(() => {
     if (analyzingStageIdx === null) return;
     const timer = window.setInterval(() => {
       setAnalyzingStageIdx((prev) =>
@@ -185,14 +214,19 @@ export default function ResumeWorkbench() {
     return () => window.clearInterval(timer);
   }, [analyzingStageIdx !== null]);
 
-  async function handleUpload(e: React.FormEvent) {
-    e.preventDefault();
+  async function doUpload(parseOnly: boolean) {
     if (!file) {
       setError("请选择简历文件");
       return;
     }
+    if (file.name.toLowerCase().endsWith(".doc")) {
+      const msg = "暂不支持旧版 .doc 格式，请将文件另存为 .docx 或 PDF 格式后上传";
+      setError(msg);
+      toast(msg, "error");
+      return;
+    }
     setLoading(true);
-    setAnalyzingStageIdx(0);
+    if (!parseOnly) setAnalyzingStageIdx(0);
     setError("");
     try {
       const fd = new FormData();
@@ -200,11 +234,19 @@ export default function ResumeWorkbench() {
       fd.append("resumeTitle", resumeTitle);
       fd.append("targetJobTitle", targetJobTitle);
       fd.append("jobDescription", jobDescription);
+      fd.append("parseOnly", parseOnly ? "true" : "false");
       const data = await api.uploadResume(fd);
       applyAnalysisResult(data, setters);
+      if (data.resume.targetJobTitle && !targetJobTitle) {
+        setTargetJobTitle(data.resume.targetJobTitle);
+      }
       api.getResumes().then(setHistory).catch(() => { });
       await refreshMe();
-      notifyAnalysisResult(data, llmEnabled, toast);
+      if (parseOnly) {
+        toast("简历已解析入库！您可先核对个人优势与经历，再触发诊断或美化", "success");
+      } else {
+        notifyAnalysisResult(data, llmEnabled, toast);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "上传失败";
       setError(msg);
@@ -213,6 +255,11 @@ export default function ResumeWorkbench() {
       setLoading(false);
       setAnalyzingStageIdx(null);
     }
+  }
+
+  async function handleUpload(e: React.FormEvent) {
+    e.preventDefault();
+    await doUpload(false);
   }
 
   async function handleReAnalyze() {
@@ -232,6 +279,85 @@ export default function ResumeWorkbench() {
     } finally {
       setLoading(false);
       setAnalyzingStageIdx(null);
+    }
+  }
+
+  async function handleRollbackVersion(versionId: number, label: string) {
+    if (!result) return;
+    setLoading(true);
+    try {
+      const updated = await api.rollbackResumeVersion(result.id, versionId);
+      setResult(updated);
+      if (updated.parsedJson) {
+        setParsedResume(JSON.parse(updated.parsedJson));
+      }
+      toast(`已回退至版本：${label}`, "success");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "回退版本失败", "error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleExportFormat(format: "markdown" | "json" | "html") {
+    if (!result) return;
+    setExportingFormat(format);
+    try {
+      const content = await api.exportResumeContent(result.id, format);
+      const extMap = { markdown: "md", json: "json", html: "html" };
+      const mimeMap = {
+        markdown: "text/markdown;charset=utf-8",
+        json: "application/json;charset=utf-8",
+        html: "text/html;charset=utf-8",
+      };
+      const blob = new Blob([content], { type: mimeMap[format] });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const safeTitle = (result.resumeTitle || "简历").replace(/[^\w\u4e00-\u9fff-]+/g, "_");
+      a.href = url;
+      a.download = `${safeTitle}.${extMap[format]}`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast(`已导出 ${format.toUpperCase()} 文件`, "success");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "导出失败", "error");
+    } finally {
+      setExportingFormat(null);
+    }
+  }
+
+  async function handleReplaceStarInResume(original: string, rewritten: string) {
+    if (!result || !parsedResume) return;
+    const nextSections = { ...parsedResume.sections };
+    let replaced = false;
+    for (const key of ["experience", "projects"] as const) {
+      const items = [...(nextSections[key] ?? [])];
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].includes(original)) {
+          items[i] = items[i].replace(original, rewritten);
+          replaced = true;
+        }
+      }
+      nextSections[key] = items;
+    }
+    if (!replaced) {
+      nextSections.experience = [...(nextSections.experience ?? []), rewritten];
+    }
+    const nextParsed: ParsedResume = {
+      ...parsedResume,
+      layout: undefined,
+      sections: nextSections,
+    };
+    setParsedResume(nextParsed);
+    try {
+      const updated = await api.patchResume(result.id, {
+        parsedJson: nextParsed,
+        versionLabel: "STAR重写替换",
+      });
+      setResult(updated);
+      toast("已将 STAR 改写结果替换至简历并保存新版本", "success");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "替换保存失败", "error");
     }
   }
 
@@ -367,15 +493,26 @@ export default function ResumeWorkbench() {
               <label className="form-label !mb-1.5">上传简历文件</label>
               <input
                 type="file"
-                accept=".pdf,.doc,.docx,.txt"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp"
+                onChange={(e) => {
+                  const selected = e.target.files?.[0] ?? null;
+                  if (selected && selected.name.toLowerCase().endsWith(".doc")) {
+                    const msg = "暂不支持旧版 .doc 格式，请将文件另存为 .docx 或 PDF 格式后上传";
+                    setError(msg);
+                    toast(msg, "error");
+                    setFile(null);
+                    return;
+                  }
+                  setError("");
+                  setFile(selected);
+                }}
                 className="w-full text-sm text-ink-muted file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:bg-cyan-700 file:text-white file:font-semibold file:text-xs hover:file:bg-cyan-800 cursor-pointer"
               />
-              <p className="text-xs text-ink-faint mt-2">支持 PDF / Word / TXT · 最大 10MB · 上传后可继续美化与导出</p>
+              <p className="text-xs text-ink-faint mt-2">支持 PDF / Word(.docx) / 图片 / TXT · 最大 10MB（不支持旧版 .doc）</p>
             </div>
             {!llmEnabled && (
               <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 leading-relaxed">
-                大模型未配置，AI 分析/美化/强化将不可用或降级。请在 <code className="font-semibold">backend/.env</code> 配置 <code className="font-semibold">OPENAI_API_KEY</code> 后重启后端。
+                当前未配置大模型密钥，上传后将使用内置规则引擎进行结构化解析与诊断。配置 <code className="font-semibold">OPENAI_API_KEY</code> 可启用深度 AI 分析。
               </p>
             )}
             {error && <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3">{error}</p>}
@@ -394,21 +531,32 @@ export default function ResumeWorkbench() {
                 <p className="text-[11px] text-cyan-800/80">通常需要数秒到数十秒，取决于简历长度与模型响应速度。</p>
               </div>
             )}
-            <button
-              type="submit"
-              disabled={loading || !llmEnabled}
-              className="btn-primary btn-full !py-3"
-            >
-              {loading ? "分析中..." : "上传并开始分析"}
-            </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => void doUpload(true)}
+                disabled={loading}
+                className="btn-secondary !py-2.5 !text-xs"
+                title="只解析结构入库，不立即执行美化或诊断"
+              >
+                {loading ? "处理中..." : "仅上传解析（先查看）"}
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="btn-primary !py-2.5 !text-xs"
+              >
+                {loading ? "分析中..." : "上传并开始分析"}
+              </button>
+            </div>
             {result && (
               <button
                 type="button"
                 onClick={handleReAnalyze}
-                disabled={loading || !llmEnabled}
+                disabled={loading}
                 className="btn-secondary btn-full"
               >
-                基于当前 JD 重新分析
+                {result.analysisStatus === "parsed" ? "立即执行 AI 诊断与 JD 匹配" : "基于当前 JD 重新分析"}
               </button>
             )}
           </form>
@@ -494,48 +642,116 @@ export default function ResumeWorkbench() {
               {parsedResume && (
                 <div className="glass-card p-6">
                   <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                    <h2 className="font-display font-bold text-ink">简历内容</h2>
-                    <div className="flex items-center gap-2">
+                    <div>
+                      <h2 className="font-display font-bold text-ink">简历结构化内容</h2>
+                      <p className="text-xs text-ink-faint mt-0.5">
+                        包含联系方式、个人优势、教育、工作、项目、技能与荣誉奖项，支持在线补全与版本回退
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {(["markdown", "json", "html"] as const).map((fmt) => (
+                        <button
+                          key={fmt}
+                          type="button"
+                          disabled={exportingFormat === fmt}
+                          onClick={() => void handleExportFormat(fmt)}
+                          className="btn-secondary !text-xs !py-1.5 !px-2.5"
+                        >
+                          {exportingFormat === fmt ? "导出中..." : `导出 ${fmt.toUpperCase()}`}
+                        </button>
+                      ))}
+                      {versions.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowVersions((v) => !v)}
+                          className="btn-secondary !text-xs !py-1.5 !px-2.5"
+                        >
+                          {showVersions ? "收起版本历史" : `版本历史 (${versions.length})`}
+                        </button>
+                      )}
                       <button
                         onClick={() => (editingSections ? saveParsedResume() : setEditingSections(true))}
-                        className="text-sm text-brand-600 font-semibold hover:text-brand-700"
+                        className="btn-primary !text-xs !py-1.5 !px-3.5"
                       >
-                        {editingSections ? "保存" : "编辑"}
+                        {editingSections ? "保存修改" : "编辑各模块"}
                       </button>
                     </div>
                   </div>
+
+                  {showVersions && versions.length > 0 && (
+                    <div className="mb-5 p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-bold text-ink">版本历史记录（可回退至上传解析初版或美化前版本）</p>
+                        <span className="text-[11px] text-ink-faint">共 {versions.length} 个快照</span>
+                      </div>
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                        {versions.map((ver) => (
+                          <div
+                            key={ver.id}
+                            className="flex items-center justify-between gap-2 bg-white px-3 py-2 rounded-lg border border-slate-200/70 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <span className="font-semibold text-ink">{ver.versionLabel}</span>
+                              <span className="text-ink-faint ml-2">
+                                {new Date(ver.createdAt).toLocaleString("zh-CN")}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={loading}
+                              onClick={() => void handleRollbackVersion(ver.id, ver.versionLabel)}
+                              className="text-cyan-700 hover:text-cyan-900 font-semibold shrink-0"
+                            >
+                              回退此版本
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {editingSections ? (
                     <div className="space-y-4 text-sm">
                       {(
                         [
                           { key: "contact" as const, label: "联系方式", isList: false },
-                          { key: "summary" as const, label: "个人简介", isList: false },
-                          { key: "experience" as const, label: "工作经历", isList: true },
+                          { key: "summary" as const, label: "个人优势", isList: false },
+                          { key: "experience" as const, label: "工作经历（每行一条或分段）", isList: true },
+                          { key: "projects" as const, label: "项目经历", isList: true },
                           { key: "skills" as const, label: "专业技能", isList: true },
                           { key: "education" as const, label: "教育背景", isList: true },
-                          { key: "projects" as const, label: "项目经历", isList: true },
+                          { key: "awards" as const, label: "荣誉奖项 / 证书", isList: true },
                         ] as const
                       ).map(({ key, label, isList }) => {
+                        const rawVal =
+                          key === "summary"
+                            ? parsedResume.sections.advantage || parsedResume.sections.summary || ""
+                            : key === "awards"
+                              ? parsedResume.sections.awards ?? parsedResume.sections.award ?? []
+                              : parsedResume.sections[key];
                         const fieldValue = isList
-                          ? (parsedResume.sections[key] ?? []).join("\n")
-                          : String(parsedResume.sections[key] ?? "");
+                          ? ((rawVal as string[] | undefined) ?? []).join("\n")
+                          : String(rawVal ?? "");
                         return (
                           <div key={key}>
                             <label className="form-label">{label}</label>
                             <textarea
                               value={fieldValue}
-                              onChange={(e) =>
+                              onChange={(e) => {
+                                const nextVal = isList
+                                  ? e.target.value.split("\n").filter(Boolean)
+                                  : e.target.value;
                                 setParsedResume({
                                   ...parsedResume,
+                                  layout: undefined,
                                   sections: {
                                     ...parsedResume.sections,
-                                    [key]: isList
-                                      ? e.target.value.split("\n").filter(Boolean)
-                                      : e.target.value,
+                                    [key]: nextVal,
+                                    ...(key === "summary" ? { advantage: String(nextVal) } : {}),
+                                    ...(key === "awards" ? { award: nextVal as string[] } : {}),
                                   },
-                                })
-                              }
+                                });
+                              }}
                               rows={textareaRows(fieldValue, isList ? 3 : 2)}
                               className="textarea-field"
                             />
@@ -641,10 +857,18 @@ export default function ResumeWorkbench() {
                     <h2 className="font-display font-bold text-lg text-ink">STAR 法则重写建议</h2>
                     <span className="tag tag-success">{starSuggestions.length} 条</span>
                   </div>
-                  <p className="text-sm text-ink-muted mb-5">{starSummary}</p>
+                  <p className="text-sm text-ink-muted mb-3">{starSummary}</p>
+                  <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 font-medium">
+                    合规提示：AI 改写仅做结构重组与表述增强，请基于真实项目经历核对数据，严禁编造虚假事实或业务指标。
+                  </div>
                   <div className="space-y-4">
                     {starSuggestions.map((s, i) => (
-                      <StarEditor key={i} resumeId={result.id} suggestion={s} />
+                      <StarEditor
+                        key={i}
+                        resumeId={result.id}
+                        suggestion={s}
+                        onReplaceInResume={(orig, rew) => void handleReplaceStarInResume(orig, rew)}
+                      />
                     ))}
                   </div>
                 </div>
