@@ -140,6 +140,12 @@ export default function Home() {
                 <MicIcon size={18} />
                 进入模拟面试
               </Link>
+              <Link
+                to="/guest"
+                className="px-5 py-3.5 rounded-[0.9rem] text-sm font-semibold border border-brand-300 text-brand-700 bg-brand-50/60 hover:bg-brand-100/80 transition-all flex items-center justify-center gap-1.5"
+              >
+                <span>⚡</span> 免登录体检(1次)
+              </Link>
             </motion.div>
 
             {!llmEnabled && (

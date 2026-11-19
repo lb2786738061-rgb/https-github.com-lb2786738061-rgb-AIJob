@@ -332,4 +332,34 @@ export const api = {
     }),
   confirmPayment: (orderId: number) =>
     request<unknown>("/payments/confirm/" + orderId, { method: "POST" }),
+  sendSmsCode: (phone: string) =>
+    request<{ success: boolean; message: string; devCode?: string }>("/auth/send-sms", {
+      method: "POST",
+      data: { phone },
+    }),
+  loginBySms: (phone: string, code: string) =>
+    request<{ token: string; user: UserInfo }>("/auth/login-sms", {
+      method: "POST",
+      data: { phone, code },
+    }),
+  getGuestStatus: (deviceId: string) =>
+    request<{ deviceId: string; hasUsed: boolean; remaining: number }>(
+      "/resumes/guest-status?deviceId=" + encodeURIComponent(deviceId)
+    ),
+  guestDiagnose: (data: { deviceId: string; resumeText: string; targetJobTitle?: string }) =>
+    request<any>("/resumes/guest-diagnose", {
+      method: "POST",
+      data,
+    }),
+  updateProfile: (data: any) =>
+    request<{ success: boolean; user: any }>("/user/profile", {
+      method: "PUT",
+      data,
+    }),
+  refundOrder: (orderId: number, reason?: string) =>
+    request<any>("/payments/orders/" + orderId + "/refund", {
+      method: "POST",
+      data: { reason },
+    }),
+  getInterviewTrend: () => request<any>("/interviews/stats/trend"),
 };

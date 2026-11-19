@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { useToast } from "../components/Toast";
 
@@ -14,11 +14,9 @@ function getOrCreateDeviceId(): string {
 
 export default function GuestDiagnose() {
   const { toast } = useToast();
-  const navigate = useNavigate();
 
   const [deviceId] = useState<string>(() => getOrCreateDeviceId());
   const [hasUsed, setHasUsed] = useState(false);
-  const [loadingStatus, setLoadingStatus] = useState(true);
 
   const [resumeText, setResumeText] = useState("");
   const [targetJobTitle, setTargetJobTitle] = useState("后端开发工程师");
@@ -40,8 +38,6 @@ export default function GuestDiagnose() {
         setHasUsed(res.hasUsed);
       } catch {
         // 忽略检查网络异常
-      } finally {
-        setLoadingStatus(false);
       }
     }
     checkStatus();
